@@ -2,7 +2,9 @@
 
 #include <cstdint>
 
-#include "commands.h"
+#include "../commands.h"
+#include "../logger.h"
+#include "../protocol.h"
 
 class Heater {
 public:

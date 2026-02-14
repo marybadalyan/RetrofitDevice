@@ -8,6 +8,7 @@ class IRSender {
 public:
     void begin();
     void sendCommand(Command command);
+    void sendAck(Command command);
 
 private:
     void mark(uint32_t timeMicros);

@@ -56,3 +56,7 @@ void IRSender::sendFrame(uint8_t commandByte) {
 void IRSender::sendCommand(Command command) {
     sendFrame(static_cast<uint8_t>(command));
 }
+
+void IRSender::sendAck(Command command) {
+    sendFrame(static_cast<uint8_t>(static_cast<uint8_t>(command) | 0x80U));
+}

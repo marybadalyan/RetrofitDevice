@@ -1,5 +1,19 @@
 #include "heater.h"
 
+#include "../prefferences.h"
+
+#if __has_include(<Arduino.h>)
+#include <Arduino.h>
+#else
+#include <cstdint>
+static inline uint32_t millis() { return 0; }
+static inline void pinMode(int, int) {}
+static inline void digitalWrite(int, int) {}
+constexpr int OUTPUT = 1;
+constexpr int HIGH = 1;
+constexpr int LOW = 0;
+#endif
+
 Heater::Heater(float initialTargetTemperatureC)
     : targetTemperatureC_(initialTargetTemperatureC) {}
 
@@ -31,7 +45,7 @@ float Heater::targetTemperatureC() const {
 }
 
 bool Heater::shouldHeat(float currentTemperatureC) const {
-    return isOn_ && (currentTemperatureC < targetTemperatureC_); // than who is the one actually increasing this shit 
+    return isOn_ && (currentTemperatureC < targetTemperatureC_);
 }
 
 
