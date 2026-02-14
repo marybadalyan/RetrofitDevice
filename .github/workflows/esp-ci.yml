@@ -36,6 +36,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio
 
+      - name: Detect PlatformIO project dir
+        id: pio-dir
+        run: |
+          if [ -f "platformio.ini" ]; then
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          elif [ -f "RetrofitDevice/platformio.ini" ]; then
+            echo "dir=RetrofitDevice" >> "$GITHUB_OUTPUT"
+          else
+            echo "Could not find platformio.ini" >&2
+            exit 1
+          fi
+
       - name: Build ${{ matrix.env_name }}
-        working-directory: RetrofitDevice
+        working-directory: ${{ steps.pio-dir.outputs.dir }}
         run: pio run -e ${{ matrix.env_name }}
