@@ -16,7 +16,7 @@ struct Packet {
 
 uint8_t checksum(uint8_t command);
 Packet makePacket(Command command);
-bool parsePacket(const Packet& packet, Command& outCommand);
-uint8_t makeAck(Command command);
+Packet makeAck(Command command);
+bool parsePacket(const Packet& packet, Command& outCommand, bool& outIsAck);
 
 }  // namespace protocol

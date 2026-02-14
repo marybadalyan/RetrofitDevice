@@ -33,3 +33,49 @@ float Heater::targetTemperatureC() const {
 bool Heater::shouldHeat(float currentTemperatureC) const {
     return isOn_ && (currentTemperatureC < targetTemperatureC_); // than who is the one actually increasing this shit 
 }
+
+
+void RelayDriver::begin() {
+    pinMode(kRelayPin, OUTPUT);
+    digitalWrite(kRelayPin, LOW);
+}
+
+void RelayDriver::setEnabled(bool enabled) {
+    digitalWrite(kRelayPin, enabled ? HIGH : LOW);
+}
+
+void TempSensor::begin() {}
+
+float TempSensor::readTemperatureC() {
+    const uint32_t phase = millis() % 5U;
+    if (phase == 0U) {
+        mockTemperature_ += 0.1F;
+    } else if (phase == 3U) {
+        mockTemperature_ -= 0.1F;
+    }
+    return mockTemperature_;
+}
+
+void DisplayDriver::begin() {}
+
+void DisplayDriver::showTemperature(float currentTemperatureC, float targetTemperatureC, bool isHeaterOn) {
+#if __has_include(<Arduino.h>)
+    static uint32_t lastPrintMs = 0;
+    const uint32_t nowMs = millis();
+    if (nowMs - lastPrintMs < 500) {
+        return;
+    }
+    lastPrintMs = nowMs;
+
+    Serial.print("Current: ");
+    Serial.print(currentTemperatureC, 1);
+    Serial.print("C Target: ");
+    Serial.print(targetTemperatureC, 1);
+    Serial.print("C Heater: ");
+    Serial.println(isHeaterOn ? "ON" : "OFF");
+#else
+    (void)currentTemperatureC;
+    (void)targetTemperatureC;
+    (void)isHeaterOn;
+#endif
+}

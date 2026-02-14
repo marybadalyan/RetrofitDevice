@@ -3,7 +3,7 @@
 namespace protocol {
 
 uint8_t checksum(uint8_t command) {
-    return static_cast<uint8_t>(command ^ 0xA5);
+    return static_cast<uint8_t>(command ^ 0xA5U);
 }
 
 Packet makePacket(Command command) {
@@ -11,7 +11,12 @@ Packet makePacket(Command command) {
     return Packet{kHeader, cmd, checksum(cmd)};
 }
 
-bool parsePacket(const Packet& packet, Command& outCommand) {
+Packet makeAck(Command command) {
+    const uint8_t ackCommand = static_cast<uint8_t>(static_cast<uint8_t>(command) | 0x80U);
+    return Packet{kHeader, ackCommand, checksum(ackCommand)};
+}
+
+bool parsePacket(const Packet& packet, Command& outCommand, bool& outIsAck) {
     if (packet.header != kHeader) {
         return false;
     }
@@ -19,20 +24,18 @@ bool parsePacket(const Packet& packet, Command& outCommand) {
         return false;
     }
 
-    switch (packet.command) {
+    outIsAck = (packet.command & 0x80U) != 0U;
+    const uint8_t normalized = static_cast<uint8_t>(packet.command & 0x7FU);
+    switch (normalized) {
         case static_cast<uint8_t>(Command::ON):
         case static_cast<uint8_t>(Command::OFF):
         case static_cast<uint8_t>(Command::TEMP_UP):
         case static_cast<uint8_t>(Command::TEMP_DOWN):
-            outCommand = static_cast<Command>(packet.command);
+            outCommand = static_cast<Command>(normalized);
             return true;
         default:
             return false;
     }
-}
-
-uint8_t makeAck(Command command) {
-    return static_cast<uint8_t>(command) | 0x80U;
 }
 
 }  // namespace protocol
