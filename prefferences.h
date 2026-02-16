@@ -12,3 +12,5 @@ constexpr uint8_t kIrPwmResolutionBits = 8;
 constexpr bool kSchedulerEnabled = true;
 constexpr uint32_t kAckTimeoutMs = 120;
 constexpr uint8_t kMaxRetryCount = 2;
+constexpr uint32_t kLearningTimeoutMs = 15000;
+constexpr bool kEnableMockBlynk = false;

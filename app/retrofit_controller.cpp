@@ -6,12 +6,14 @@ RetrofitController::RetrofitController(IRSender& irSender,
                                        IRReceiver& irReceiver,
                                        HubReceiver& hubReceiver,
                                        CommandScheduler& scheduler,
-                                       Logger& logger)
+                                       Logger& logger,
+                                       LearnedCommandStore& learnedStore)
     : irSender_(irSender),
       irReceiver_(irReceiver),
       hubReceiver_(hubReceiver),
       scheduler_(scheduler),
-      logger_(logger) {}
+      logger_(logger),
+      learnedStore_(learnedStore) {}
 
 void RetrofitController::begin(bool schedulerEnabled) {
     scheduler_.setEnabled(schedulerEnabled);
@@ -30,6 +32,17 @@ void RetrofitController::tick(uint32_t nowMs) {
     if (chooseNextCommand(nowMs, next, sourceType)) {
         sendCommand(next, nowMs, sourceType);
     }
+}
+
+bool RetrofitController::sendImmediate(Command command, uint32_t nowMs, LogEventType sourceType) {
+    processIncomingFrames(nowMs);
+    if (pendingStatus_ != PendingStatus::IDLE) {
+        logger_.log(nowMs, LogEventType::COMMAND_DROPPED, command, false);
+        return false;
+    }
+
+    sendCommand(command, nowMs, sourceType);
+    return true;
 }
 
 void RetrofitController::processIncomingFrames(uint32_t nowMs) {
@@ -67,8 +80,19 @@ bool RetrofitController::chooseNextCommand(uint32_t nowMs, Command& outCommand, 
 void RetrofitController::sendCommand(Command command, uint32_t nowMs, LogEventType sourceType) {
     logger_.log(nowMs, sourceType, command, true);
 
-    irSender_.sendCommand(command);
+    bool expectAck = true;
+    if (!transmit(command, expectAck)) {
+        logger_.log(nowMs, LogEventType::COMMAND_DROPPED, command, false);
+        return;
+    }
     logger_.log(nowMs, LogEventType::COMMAND_SENT, command, true);
+
+    if (!expectAck) {
+        pendingStatus_ = PendingStatus::IDLE;
+        pendingCommand_ = Command::NONE;
+        retryCount_ = 0;
+        return;
+    }
 
     pendingStatus_ = PendingStatus::WAITING_ACK;
     pendingCommand_ = command;
@@ -85,9 +109,22 @@ void RetrofitController::handlePendingTimeout(uint32_t nowMs) {
 
     if (retryCount_ < kMaxRetryCount) {
         ++retryCount_;
-        irSender_.sendCommand(pendingCommand_);
+        bool expectAck = true;
+        if (!transmit(pendingCommand_, expectAck)) {
+            logger_.log(nowMs, LogEventType::COMMAND_DROPPED, pendingCommand_, false);
+            pendingStatus_ = PendingStatus::IDLE;
+            retryCount_ = 0;
+            pendingCommand_ = Command::NONE;
+            return;
+        }
         logger_.log(nowMs, LogEventType::COMMAND_SENT, pendingCommand_, true);
-        pendingDeadlineMs_ = nowMs + kAckTimeoutMs;
+        if (!expectAck) {
+            pendingStatus_ = PendingStatus::IDLE;
+            retryCount_ = 0;
+            pendingCommand_ = Command::NONE;
+        } else {
+            pendingDeadlineMs_ = nowMs + kAckTimeoutMs;
+        }
         return;
     }
 
@@ -95,4 +132,18 @@ void RetrofitController::handlePendingTimeout(uint32_t nowMs) {
     pendingStatus_ = PendingStatus::IDLE;
     retryCount_ = 0;
     pendingCommand_ = Command::NONE;
+}
+
+bool RetrofitController::transmit(Command command, bool& outExpectAck) {
+    RawIRFrame learned{};
+    if (learnedStore_.load(command, learned)) {
+        // Learned frames can be from arbitrary vendor protocols and often have no ACK.
+        irSender_.sendRaw(learned, true);
+        outExpectAck = false;
+        return true;
+    }
+
+    irSender_.sendCommand(command);
+    outExpectAck = true;
+    return true;
 }

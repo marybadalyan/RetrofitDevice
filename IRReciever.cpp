@@ -55,6 +55,13 @@ void IRReceiver::onEdgeInterrupt() {
     lastEdgeUs_ = nowUs;
 
     if (deltaUs > kFrameGapUs) {
+        if (pulseCount_ > 8 && !frameReady_) {
+            completedFrame_.count = pulseCount_;
+            for (size_t i = 0; i < pulseCount_; ++i) {
+                completedFrame_.pulsesUs[i] = pulseDurationsUs_[i];
+            }
+            frameReady_ = true;
+        }
         pulseCount_ = 0;
         return;
     }
@@ -67,8 +74,10 @@ void IRReceiver::onEdgeInterrupt() {
     }
 }
 
-bool IRReceiver::decodeFrame(DecodedFrame& outFrame, const uint16_t* pulses, size_t pulseCount) const {
+bool IRReceiver::decodeFrame(DecodedFrame& outFrame, const RawIRFrame& frame) const {
     // Pulse timings are interpreted as mark/space pairs. Each pair is one bit.
+    const uint16_t* pulses = frame.pulsesUs.data();
+    const size_t pulseCount = frame.count;
     if (pulseCount < 66) {
         return false;
     }
@@ -122,26 +131,26 @@ bool IRReceiver::decodeFrame(DecodedFrame& outFrame, const uint16_t* pulses, siz
     return true;
 }
 
-bool IRReceiver::poll(DecodedFrame& outFrame) {
-    uint16_t localPulses[128]{};
-    size_t count = 0;
-
-    noInterrupts();
-    count = pulseCount_;
-    if (count > pulseDurationsUs_.size()) {
-        count = pulseDurationsUs_.size();
-    }
-    for (size_t i = 0; i < count; ++i) {
-        localPulses[i] = pulseDurationsUs_[i];
-    }
-    interrupts();
-
-    if (!decodeFrame(outFrame, localPulses, count)) {
+bool IRReceiver::pollRawFrame(RawIRFrame& outFrame) {
+    if (!frameReady_) {
         return false;
     }
 
     noInterrupts();
-    pulseCount_ = 0;
+    outFrame = completedFrame_;
+    frameReady_ = false;
     interrupts();
+    return outFrame.count > 0;
+}
+
+bool IRReceiver::poll(DecodedFrame& outFrame) {
+    RawIRFrame frame{};
+    if (!pollRawFrame(frame)) {
+        return false;
+    }
+
+    if (!decodeFrame(outFrame, frame)) {
+        return false;
+    }
     return true;
 }
