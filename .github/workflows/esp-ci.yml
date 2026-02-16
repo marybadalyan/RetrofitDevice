@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env_name: [retrofit, heater]
+        env_name: [retrofit, heater, remote]
 
     steps:
       - name: Checkout
