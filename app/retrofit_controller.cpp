@@ -32,6 +32,17 @@ void RetrofitController::tick(uint32_t nowMs) {
     }
 }
 
+bool RetrofitController::sendImmediate(Command command, uint32_t nowMs, LogEventType sourceType) {
+    processIncomingFrames(nowMs);
+    if (pendingStatus_ != PendingStatus::IDLE) {
+        logger_.log(nowMs, LogEventType::COMMAND_DROPPED, command, false);
+        return false;
+    }
+
+    sendCommand(command, nowMs, sourceType);
+    return true;
+}
+
 void RetrofitController::processIncomingFrames(uint32_t nowMs) {
     DecodedFrame frame{};
     while (irReceiver_.poll(frame)) {

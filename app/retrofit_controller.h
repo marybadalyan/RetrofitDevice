@@ -19,6 +19,7 @@ public:
 
     void begin(bool schedulerEnabled);
     void tick(uint32_t nowMs);
+    bool sendImmediate(Command command, uint32_t nowMs, LogEventType sourceType);
 
 private:
     enum class PendingStatus : uint8_t { IDLE = 0, WAITING_ACK = 1 };

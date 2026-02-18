@@ -12,7 +12,8 @@ enum class LogEventType : uint8_t {
     COMMAND_DROPPED = 2,
     HUB_COMMAND_RX = 3,
     SCHEDULE_COMMAND = 4,
-    STATE_CHANGE = 5
+    STATE_CHANGE = 5,
+    BLYNK_COMMAND_RX = 6
 };
 
 struct LogEntry {
