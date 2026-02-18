@@ -60,17 +60,3 @@ void IRSender::sendCommand(Command command) {
 void IRSender::sendAck(Command command) {
     sendFrame(static_cast<uint8_t>(static_cast<uint8_t>(command) | 0x80U));
 }
-
-void IRSender::sendRaw(const RawIRFrame& frame, bool startsWithMark) {
-    // Raw replay replicates a learned vendor protocol without decoding it.
-    bool emitMark = startsWithMark;
-    for (size_t i = 0; i < frame.count; ++i) {
-        if (emitMark) {
-            mark(frame.pulsesUs[i]);
-        } else {
-            space(frame.pulsesUs[i]);
-        }
-        emitMark = !emitMark;
-    }
-    space(0);
-}

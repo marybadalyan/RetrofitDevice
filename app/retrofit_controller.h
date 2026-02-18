@@ -6,7 +6,6 @@
 #include "../IRSender.h"
 #include "../commands.h"
 #include "../hub/hub_receiver.h"
-#include "../learning/learned_command_store.h"
 #include "../logger.h"
 #include "../scheduler/scheduler.h"
 
@@ -16,8 +15,7 @@ public:
                        IRReceiver& irReceiver,
                        HubReceiver& hubReceiver,
                        CommandScheduler& scheduler,
-                       Logger& logger,
-                       LearnedCommandStore& learnedStore);
+                       Logger& logger);
 
     void begin(bool schedulerEnabled);
     void tick(uint32_t nowMs);
@@ -30,14 +28,12 @@ private:
     bool chooseNextCommand(uint32_t nowMs, Command& outCommand, LogEventType& sourceType);
     void sendCommand(Command command, uint32_t nowMs, LogEventType sourceType);
     void handlePendingTimeout(uint32_t nowMs);
-    bool transmit(Command command, bool& outExpectAck);
 
     IRSender& irSender_;
     IRReceiver& irReceiver_;
     HubReceiver& hubReceiver_;
     CommandScheduler& scheduler_;
     Logger& logger_;
-    LearnedCommandStore& learnedStore_;
 
     PendingStatus pendingStatus_ = PendingStatus::IDLE;
     Command pendingCommand_ = Command::NONE;

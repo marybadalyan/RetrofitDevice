@@ -5,7 +5,7 @@
 // GPIO pin for IR transmitter LED (output).
 constexpr int kIrTxPin = 4;
 
-// ESP32 LEDC PWM channel used for IR carrier generation. 
+// ESP32 LEDC PWM channel used for IR carrier generation.
 constexpr uint8_t kIrPwmChannel = 0;
 
 // GPIO pin for IR receiver module (input/interrupt).
@@ -24,7 +24,5 @@ constexpr bool kSchedulerEnabled = true;
 constexpr uint32_t kAckTimeoutMs = 120;
 // Number of retries before marking command as failed.
 constexpr uint8_t kMaxRetryCount = 2;
-// Maximum learning window to capture a raw IR frame.
-constexpr uint32_t kLearningTimeoutMs = 15000;
 // Enables mock Blynk events for local testing.
 constexpr bool kEnableMockBlynk = false;

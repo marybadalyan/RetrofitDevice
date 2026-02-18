@@ -22,16 +22,8 @@ bool BlynkBridge::pop(std::array<Command, kQueueSize>& queue, size_t& head, size
     return true;
 }
 
-bool BlynkBridge::pushLearnRequest(Command command) {
-    return push(learnQueue_, learnTail_, learnCount_, command);
-}
-
 bool BlynkBridge::pushControlCommand(Command command) {
     return push(controlQueue_, controlTail_, controlCount_, command);
-}
-
-bool BlynkBridge::pollLearnRequest(Command& outCommand) {
-    return pop(learnQueue_, learnHead_, learnCount_, outCommand);
 }
 
 bool BlynkBridge::pollControlCommand(Command& outCommand) {

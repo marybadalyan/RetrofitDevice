@@ -13,10 +13,7 @@ enum class LogEventType : uint8_t {
     HUB_COMMAND_RX = 3,
     SCHEDULE_COMMAND = 4,
     STATE_CHANGE = 5,
-    BLYNK_COMMAND_RX = 6,
-    LEARNING_START = 7,
-    LEARNING_SUCCESS = 8,
-    LEARNING_TIMEOUT = 9
+    BLYNK_COMMAND_RX = 6
 };
 
 struct LogEntry {
