@@ -2,6 +2,7 @@
 #include "../IRSender.h"
 #include "../logger.h"
 #include "../prefferences.h"
+#include "../time/wall_clock.h"
 #include "heater.h"
 
 #if __has_include(<Arduino.h>)
@@ -9,12 +10,14 @@
 #else
 #include <cstdint>
 static inline uint32_t millis() { return 0; }
+static inline uint32_t micros() { return 0; }
 #endif
 
 namespace {
 IRReceiver gIrReceiver;
 IRSender gIrSender;
 Logger gLogger;
+WallClock gWallClock;
 Heater gHeater(22.0F);
 RelayDriver gRelay;
 TempSensor gSensor;
@@ -30,13 +33,20 @@ void setup() {
     gRelay.begin();
     gSensor.begin();
     gDisplay.begin();
+
+    gLogger.beginPersistence("heater-log");
+    gWallClock.beginNtp(kNtpTimezone, kNtpServerPrimary, kNtpServerSecondary, kNtpServerTertiary);
 }
 
 void loop() {
+    const uint32_t nowMs = millis();
+    const uint32_t nowUs = micros();
+    const WallClockSnapshot wallNow = gWallClock.now(nowMs, nowUs);
+
     DecodedFrame frame{};
     if (gIrReceiver.poll(frame) && !frame.isAck) {
         const bool applied = gHeater.applyCommand(frame.command);
-        gLogger.log(millis(), LogEventType::STATE_CHANGE, frame.command, applied);
+        gLogger.log(wallNow, LogEventType::STATE_CHANGE, frame.command, applied);
         if (applied) {
             // Heater acknowledges command execution back to retrofit device.
             gIrSender.sendAck(frame.command);

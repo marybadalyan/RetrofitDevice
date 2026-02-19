@@ -12,3 +12,9 @@ constexpr uint8_t kIrPwmResolutionBits = 8;
 constexpr bool kSchedulerEnabled = true;
 constexpr uint32_t kAckTimeoutMs = 120;
 constexpr uint8_t kMaxRetryCount = 2;
+
+// Wall-clock settings (NTP + local timezone).
+constexpr const char* kNtpTimezone = "UTC0";
+constexpr const char* kNtpServerPrimary = "pool.ntp.org";
+constexpr const char* kNtpServerSecondary = "time.nist.gov";
+constexpr const char* kNtpServerTertiary = "time.google.com";

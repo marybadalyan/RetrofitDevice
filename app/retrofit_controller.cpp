@@ -17,9 +17,10 @@ void RetrofitController::begin(bool schedulerEnabled) {
     scheduler_.setEnabled(schedulerEnabled);
 }
 
-void RetrofitController::tick(uint32_t nowMs) {
-    processIncomingFrames(nowMs);
-    handlePendingTimeout(nowMs);
+void RetrofitController::tick(uint32_t nowMs, uint32_t nowUs, const WallClockSnapshot& wallNow) {
+    (void)nowUs;
+    processIncomingFrames(wallNow);
+    handlePendingTimeout(wallNow);
 
     if (pendingStatus_ != PendingStatus::IDLE) {
         return;
@@ -27,19 +28,19 @@ void RetrofitController::tick(uint32_t nowMs) {
 
     Command next = Command::NONE;
     LogEventType sourceType = LogEventType::COMMAND_DROPPED;
-    if (chooseNextCommand(nowMs, next, sourceType)) {
-        sendCommand(next, nowMs, sourceType);
+    if (chooseNextCommand(nowMs, wallNow, next, sourceType)) {
+        sendCommand(next, wallNow, sourceType);
     }
 }
 
-void RetrofitController::processIncomingFrames(uint32_t nowMs) {
+void RetrofitController::processIncomingFrames(const WallClockSnapshot& wallNow) {
     DecodedFrame frame{};
     while (irReceiver_.poll(frame)) {
         if (!frame.isAck) {
             continue;
         }
 
-        logger_.log(nowMs, LogEventType::ACK_RECEIVED, frame.command, true);
+        logger_.log(wallNow, LogEventType::ACK_RECEIVED, frame.command, true);
         if (pendingStatus_ == PendingStatus::WAITING_ACK && frame.command == pendingCommand_) {
             pendingStatus_ = PendingStatus::IDLE;
             retryCount_ = 0;
@@ -48,9 +49,12 @@ void RetrofitController::processIncomingFrames(uint32_t nowMs) {
     }
 }
 
-bool RetrofitController::chooseNextCommand(uint32_t nowMs, Command& outCommand, LogEventType& sourceType) {
+bool RetrofitController::chooseNextCommand(uint32_t nowMs,
+                                           const WallClockSnapshot& wallNow,
+                                           Command& outCommand,
+                                           LogEventType& sourceType) {
     if (scheduler_.enabled()) {
-        if (scheduler_.nextDueCommand(nowMs, outCommand)) {
+        if (scheduler_.nextDueCommand(nowMs, wallNow, outCommand)) {
             sourceType = LogEventType::SCHEDULE_COMMAND;
             return true;
         }
@@ -64,34 +68,34 @@ bool RetrofitController::chooseNextCommand(uint32_t nowMs, Command& outCommand, 
     return false;
 }
 
-void RetrofitController::sendCommand(Command command, uint32_t nowMs, LogEventType sourceType) {
-    logger_.log(nowMs, sourceType, command, true);
+void RetrofitController::sendCommand(Command command, const WallClockSnapshot& wallNow, LogEventType sourceType) {
+    logger_.log(wallNow, sourceType, command, true);
 
     irSender_.sendCommand(command);
-    logger_.log(nowMs, LogEventType::COMMAND_SENT, command, true);
+    logger_.log(wallNow, LogEventType::COMMAND_SENT, command, true);
 
     pendingStatus_ = PendingStatus::WAITING_ACK;
     pendingCommand_ = command;
-    pendingDeadlineMs_ = nowMs + kAckTimeoutMs;
+    pendingDeadlineMs_ = wallNow.bootMs + kAckTimeoutMs;
 }
 
-void RetrofitController::handlePendingTimeout(uint32_t nowMs) {
+void RetrofitController::handlePendingTimeout(const WallClockSnapshot& wallNow) {
     if (pendingStatus_ != PendingStatus::WAITING_ACK) {
         return;
     }
-    if (static_cast<int32_t>(nowMs - pendingDeadlineMs_) < 0) {
+    if (static_cast<int32_t>(wallNow.bootMs - pendingDeadlineMs_) < 0) {
         return;
     }
 
     if (retryCount_ < kMaxRetryCount) {
         ++retryCount_;
         irSender_.sendCommand(pendingCommand_);
-        logger_.log(nowMs, LogEventType::COMMAND_SENT, pendingCommand_, true);
-        pendingDeadlineMs_ = nowMs + kAckTimeoutMs;
+        logger_.log(wallNow, LogEventType::COMMAND_SENT, pendingCommand_, true);
+        pendingDeadlineMs_ = wallNow.bootMs + kAckTimeoutMs;
         return;
     }
 
-    logger_.log(nowMs, LogEventType::COMMAND_DROPPED, pendingCommand_, false);
+    logger_.log(wallNow, LogEventType::COMMAND_DROPPED, pendingCommand_, false);
     pendingStatus_ = PendingStatus::IDLE;
     retryCount_ = 0;
     pendingCommand_ = Command::NONE;
