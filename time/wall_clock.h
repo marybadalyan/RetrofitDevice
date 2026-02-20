@@ -24,7 +24,7 @@ public:
     // Starts system NTP sync if supported by target/runtime.
     void beginNtp(const char* timezone, const char* ntp1, const char* ntp2 = nullptr, const char* ntp3 = nullptr);
 
-    // Allows hub/Blynk or other source to inject current wall time.
+    // Allows hub or other external source to inject current wall time.
     void setUnixTimeMs(uint64_t unixMs, uint32_t nowMs);
 
     bool isValid() const;

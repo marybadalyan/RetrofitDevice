@@ -18,6 +18,12 @@ constexpr float kThermostatHysteresisC = 1.0F;
 // Set false if heater control path does not use a physical relay output pin.
 constexpr bool kUseRelayOutput = true;
 
+// Retrofit Wi-Fi + hub cloud settings.
+constexpr const char* kWifiSsid = "";
+constexpr const char* kWifiPassword = "";
+constexpr bool kEnableIpTimezoneLookup = true;
+constexpr const char* kIpTimezoneUrl = "http://ip-api.com/json/?fields=timezone";
+
 // Wall-clock settings (NTP + local timezone).
 constexpr const char* kNtpTimezone = "UTC0";
 constexpr const char* kNtpServerPrimary = "pool.ntp.org";

@@ -2,6 +2,7 @@
 #include "IRSender.h"
 #include "app/room_temp_sensor.h"
 #include "app/retrofit_controller.h"
+#include "hub/hub_connectivity.h"
 #include "hub/hub_receiver.h"
 #include "logger.h"
 #include "prefferences.h"
@@ -26,6 +27,7 @@ CommandScheduler gScheduler;
 Logger gLogger;
 WallClock gWallClock;
 RoomTempSensor gRoomTempSensor;
+HubConnectivity gHubConnectivity;
 RetrofitController gController(gIrSender, gIrReceiver, gHubReceiver, gScheduler, gLogger);
 
 void loadDefaultSchedule() {
@@ -48,7 +50,7 @@ struct HubMockScheduleEntry {
 };
 
 void mockHubInput(uint32_t nowMs, const WallClockSnapshot& wallNow) {
-    // Mock hub commands for fallback mode; replace with WiFi/Blynk later.
+    // Mock hub commands for fallback mode; replace with real hub transport later.
     if (kSchedulerEnabled) {
         return;
     }
@@ -100,7 +102,7 @@ void setup() {
     gRoomTempSensor.begin();
 
     gLogger.beginPersistence("retrofit-log");
-    gWallClock.beginNtp(kNtpTimezone, kNtpServerPrimary, kNtpServerSecondary, kNtpServerTertiary);
+    gHubConnectivity.begin(gHubReceiver, gWallClock);
 
     gController.begin(kSchedulerEnabled);
 
@@ -112,10 +114,13 @@ void setup() {
 void loop() {
     const uint32_t nowMs = millis();
     const uint32_t nowUs = micros();
+    gHubConnectivity.tick(nowMs, gHubReceiver, gWallClock);
     const WallClockSnapshot wallNow = gWallClock.now(nowMs, nowUs);
     const float roomTemperatureC = gRoomTempSensor.readTemperatureC();
 
-    mockHubInput(nowMs, wallNow);
+    if (!gHubConnectivity.wifiConnected()) {
+        mockHubInput(nowMs, wallNow);
+    }
 
     // Scheduler/hub arbitration + ACK handling live in controller.
     gController.tick(nowMs, nowUs, wallNow, roomTemperatureC);
