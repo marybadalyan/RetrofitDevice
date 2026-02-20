@@ -162,11 +162,14 @@ bool HubConnectivity::lookupTimezoneRuleFromIp(char* outRule, size_t outRuleSize
     }
 
     const char* mappedRule = mapIanaToPosix(ianaZone);
-    if (mappedRule == nullptr) {
-        return false;
+    if (mappedRule != nullptr) {
+        copyRule(outRule, outRuleSize, mappedRule);
+        return true;
     }
 
-    copyRule(outRule, outRuleSize, mappedRule);
+    // Fallback: pass IANA timezone directly. On targets with zoneinfo support,
+    // this enables full location-aware timezone + DST behavior.
+    copyRule(outRule, outRuleSize, ianaZone);
     return true;
 #else
     (void)outRule;
