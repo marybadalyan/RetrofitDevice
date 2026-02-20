@@ -51,6 +51,11 @@ public:
                        uint8_t weekdayMask = kWeekdayAll);
 
     bool nextDueCommand(uint32_t nowMs, const WallClockSnapshot& wallNow, Command& outCommand);
+    bool nextPlannedCommand(uint32_t nowMs,
+                            const WallClockSnapshot& wallNow,
+                            Command& outCommand,
+                            uint32_t& outDueInSec,
+                            bool& outUsesWallClock) const;
 
 private:
     static constexpr size_t kMaxEntries = 16;

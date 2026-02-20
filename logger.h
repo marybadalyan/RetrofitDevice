@@ -14,7 +14,8 @@ enum class LogEventType : uint8_t {
     HUB_COMMAND_RX = 3,
     SCHEDULE_COMMAND = 4,
     STATE_CHANGE = 5,
-    THERMOSTAT_CONTROL = 6
+    THERMOSTAT_CONTROL = 6,
+    TRANSMIT_FAILED = 7
 };
 
 struct LogEntry {
@@ -30,13 +31,18 @@ struct LogEntry {
     LogEventType type;
     Command command;
     bool success;
+    uint8_t detailCode;
 };
 
 class Logger {
 public:
     static constexpr size_t kCapacity = 128;
 
-    void log(const WallClockSnapshot& timestamp, LogEventType type, Command command, bool success);
+    void log(const WallClockSnapshot& timestamp,
+             LogEventType type,
+             Command command,
+             bool success,
+             uint8_t detailCode = 0);
     bool beginPersistence(const char* storageNamespace);
 
     const std::array<LogEntry, kCapacity>& entries() const;

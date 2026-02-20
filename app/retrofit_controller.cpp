@@ -1,6 +1,22 @@
 #include "retrofit_controller.h"
 
+#include "../diagnostics/diag.h"
 #include "../prefferences.h"
+
+namespace {
+const char* sourceLabel(LogEventType sourceType) {
+    switch (sourceType) {
+        case LogEventType::HUB_COMMAND_RX:
+            return "HUB";
+        case LogEventType::SCHEDULE_COMMAND:
+            return "SCHEDULE";
+        case LogEventType::THERMOSTAT_CONTROL:
+            return "THERMOSTAT";
+        default:
+            return "OTHER";
+    }
+}
+}  // namespace
 
 RetrofitController::RetrofitController(IRSender& irSender,
                                        IRReceiver& irReceiver,
@@ -16,6 +32,18 @@ RetrofitController::RetrofitController(IRSender& irSender,
 
 void RetrofitController::begin(bool schedulerEnabled) {
     scheduler_.setEnabled(schedulerEnabled);
+}
+
+RetrofitController::HealthSnapshot RetrofitController::healthSnapshot() const {
+    HealthSnapshot snapshot{};
+    snapshot.powerEnabled = powerEnabled_;
+    snapshot.heaterCommandedOn = heaterCommandedOn_;
+    snapshot.targetTemperatureC = targetTemperatureC_;
+    snapshot.waitingAck = (pendingStatus_ == PendingStatus::WAITING_ACK);
+    snapshot.retryCount = retryCount_;
+    snapshot.pendingCommand = pendingCommand_;
+    snapshot.lastTxFailure = lastTxFailure_;
+    return snapshot;
 }
 
 void RetrofitController::tick(uint32_t nowMs,
@@ -121,8 +149,40 @@ void RetrofitController::runThermostatLoop(const WallClockSnapshot& wallNow, flo
 void RetrofitController::sendCommand(Command command, const WallClockSnapshot& wallNow, LogEventType sourceType) {
     logger_.log(wallNow, sourceType, command, true);
 
-    irSender_.sendCommand(command);
-    logger_.log(wallNow, LogEventType::COMMAND_SENT, command, true);
+    if (diag::enabled(DiagLevel::INFO)) {
+        diag::log(DiagLevel::INFO, "TX", "Preparing IR transmit");
+#if __has_include(<Arduino.h>)
+        Serial.print("  reason=");
+        Serial.print(sourceLabel(sourceType));
+        Serial.print(" cmd=");
+        Serial.println(commandToString(command));
+#endif
+    }
+
+    const TxFailureCode txResult = irSender_.sendCommand(command);
+    if (txResult != TxFailureCode::NONE) {
+        lastTxFailure_ = txResult;
+        logger_.log(wallNow,
+                    LogEventType::TRANSMIT_FAILED,
+                    command,
+                    false,
+                    static_cast<uint8_t>(txResult));
+        if (diag::enabled(DiagLevel::ERROR)) {
+            diag::log(DiagLevel::ERROR, "TX", "IR transmit failed");
+#if __has_include(<Arduino.h>)
+            Serial.print("  reason=");
+            Serial.print(sourceLabel(sourceType));
+            Serial.print(" cmd=");
+            Serial.print(commandToString(command));
+            Serial.print(" code=");
+            Serial.println(static_cast<uint8_t>(txResult));
+#endif
+        }
+        return;
+    }
+    lastTxFailure_ = TxFailureCode::NONE;
+
+    logger_.log(wallNow, LogEventType::COMMAND_SENT, command, true, static_cast<uint8_t>(TxFailureCode::NONE));
 
     pendingStatus_ = PendingStatus::WAITING_ACK;
     pendingCommand_ = command;
@@ -139,8 +199,41 @@ void RetrofitController::handlePendingTimeout(const WallClockSnapshot& wallNow) 
 
     if (retryCount_ < kMaxRetryCount) {
         ++retryCount_;
-        irSender_.sendCommand(pendingCommand_);
-        logger_.log(wallNow, LogEventType::COMMAND_SENT, pendingCommand_, true);
+        if (diag::enabled(DiagLevel::DEBUG)) {
+            diag::log(DiagLevel::DEBUG, "TX", "Retrying IR transmit");
+#if __has_include(<Arduino.h>)
+            Serial.print("  cmd=");
+            Serial.print(commandToString(pendingCommand_));
+            Serial.print(" retry=");
+            Serial.println(retryCount_);
+#endif
+        }
+        const TxFailureCode txResult = irSender_.sendCommand(pendingCommand_);
+        if (txResult != TxFailureCode::NONE) {
+            lastTxFailure_ = txResult;
+            logger_.log(wallNow,
+                        LogEventType::TRANSMIT_FAILED,
+                        pendingCommand_,
+                        false,
+                        static_cast<uint8_t>(txResult));
+            if (diag::enabled(DiagLevel::ERROR)) {
+                diag::log(DiagLevel::ERROR, "TX", "Retry transmit failed");
+#if __has_include(<Arduino.h>)
+                Serial.print("  cmd=");
+                Serial.print(commandToString(pendingCommand_));
+                Serial.print(" code=");
+                Serial.println(static_cast<uint8_t>(txResult));
+#endif
+            }
+            pendingDeadlineMs_ = wallNow.bootMs + kAckTimeoutMs;
+            return;
+        }
+        lastTxFailure_ = TxFailureCode::NONE;
+        logger_.log(wallNow,
+                    LogEventType::COMMAND_SENT,
+                    pendingCommand_,
+                    true,
+                    static_cast<uint8_t>(TxFailureCode::NONE));
         pendingDeadlineMs_ = wallNow.bootMs + kAckTimeoutMs;
         return;
     }

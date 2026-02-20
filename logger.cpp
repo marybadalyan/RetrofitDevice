@@ -12,7 +12,7 @@
 #endif
 
 namespace {
-constexpr uint16_t kPersistenceVersion = 1;
+constexpr uint16_t kPersistenceVersion = 2;
 
 struct LoggerPersistentHeader {
     uint16_t version = kPersistenceVersion;
@@ -28,7 +28,11 @@ Preferences& prefs() {
 #endif
 }  // namespace
 
-void Logger::log(const WallClockSnapshot& timestamp, LogEventType type, Command command, bool success) {
+void Logger::log(const WallClockSnapshot& timestamp,
+                 LogEventType type,
+                 Command command,
+                 bool success,
+                 uint8_t detailCode) {
     entries_[nextIndex_] = LogEntry{
         timestamp.bootMs,
         timestamp.bootUs,
@@ -42,6 +46,7 @@ void Logger::log(const WallClockSnapshot& timestamp, LogEventType type, Command 
         type,
         command,
         success,
+        detailCode,
     };
 
     nextIndex_ = (nextIndex_ + 1U) % entries_.size();

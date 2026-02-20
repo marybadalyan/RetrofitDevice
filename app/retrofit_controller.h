@@ -12,6 +12,16 @@
 
 class RetrofitController {
 public:
+    struct HealthSnapshot {
+        bool powerEnabled = false;
+        bool heaterCommandedOn = false;
+        float targetTemperatureC = 0.0F;
+        bool waitingAck = false;
+        uint8_t retryCount = 0;
+        Command pendingCommand = Command::NONE;
+        TxFailureCode lastTxFailure = TxFailureCode::NONE;
+    };
+
     RetrofitController(IRSender& irSender,
                        IRReceiver& irReceiver,
                        HubReceiver& hubReceiver,
@@ -20,6 +30,7 @@ public:
 
     void begin(bool schedulerEnabled);
     void tick(uint32_t nowMs, uint32_t nowUs, const WallClockSnapshot& wallNow, float roomTemperatureC);
+    HealthSnapshot healthSnapshot() const;
 
 private:
     enum class PendingStatus : uint8_t { IDLE = 0, WAITING_ACK = 1 };
@@ -48,4 +59,5 @@ private:
     bool powerEnabled_ = false;
     bool heaterCommandedOn_ = false;
     float targetTemperatureC_ = 22.0F;
+    TxFailureCode lastTxFailure_ = TxFailureCode::NONE;
 };

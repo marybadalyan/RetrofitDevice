@@ -1,5 +1,6 @@
 #include "hub_connectivity.h"
 
+#include "../diagnostics/diag.h"
 #include "../prefferences.h"
 
 #include <cstring>
@@ -74,6 +75,9 @@ void HubConnectivity::begin(HubReceiver& hubReceiver, WallClock& wallClock) {
         WiFi.mode(WIFI_STA);
         WiFi.begin(kWifiSsid, kWifiPassword);
         wifiStarted_ = true;
+        diag::log(DiagLevel::INFO, "WIFI", "Connecting to AP");
+    } else {
+        diag::log(DiagLevel::WARN, "WIFI", "SSID is empty; Wi-Fi disabled");
     }
 #endif
 
@@ -90,6 +94,7 @@ void HubConnectivity::tick(uint32_t nowMs, HubReceiver& hubReceiver, WallClock& 
             lastWifiRetryMs_ = nowMs;
             WiFi.begin(kWifiSsid, kWifiPassword);
             wifiStarted_ = true;
+            diag::log(DiagLevel::WARN, "WIFI", "Retrying AP connection");
         }
     }
 
@@ -98,6 +103,7 @@ void HubConnectivity::tick(uint32_t nowMs, HubReceiver& hubReceiver, WallClock& 
             lastWifiRetryMs_ = nowMs;
             WiFi.disconnect();
             WiFi.begin(kWifiSsid, kWifiPassword);
+            diag::log(DiagLevel::WARN, "WIFI", "AP disconnected; reconnecting");
         }
         return;
     }
@@ -107,11 +113,20 @@ void HubConnectivity::tick(uint32_t nowMs, HubReceiver& hubReceiver, WallClock& 
         copyRule(tzRule, sizeof(tzRule), kNtpTimezone);
 
         if (kEnableIpTimezoneLookup) {
-            lookupTimezoneRuleFromIp(tzRule, sizeof(tzRule));
+            if (!lookupTimezoneRuleFromIp(tzRule, sizeof(tzRule))) {
+                diag::log(DiagLevel::WARN, "TIME", "IP timezone lookup failed; using fallback TZ");
+            }
         }
 
         wallClock.beginNtp(tzRule, kNtpServerPrimary, kNtpServerSecondary, kNtpServerTertiary);
         timeConfigured_ = true;
+        if (diag::enabled(DiagLevel::INFO)) {
+            diag::log(DiagLevel::INFO, "TIME", "NTP configured");
+#if __has_include(<Arduino.h>)
+            Serial.print("  tz=");
+            Serial.println(tzRule);
+#endif
+        }
     }
 #endif
 

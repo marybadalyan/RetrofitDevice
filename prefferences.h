@@ -17,6 +17,9 @@ constexpr float kDefaultTargetTemperatureC = 22.0F;
 constexpr float kThermostatHysteresisC = 1.0F;
 // Set false if heater control path does not use a physical relay output pin.
 constexpr bool kUseRelayOutput = true;
+// Serial diagnostics level: 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG.
+constexpr uint8_t kDiagnosticsLogLevel = 2;
+constexpr uint32_t kHealthSnapshotIntervalMs = 10000;
 
 // Retrofit Wi-Fi + hub cloud settings.
 constexpr const char* kWifiSsid = "";

@@ -47,7 +47,14 @@ void loop() {
         gLogger.log(wallNow, LogEventType::STATE_CHANGE, frame.command, applied);
         if (applied) {
             // Heater acknowledges command execution back to retrofit device.
-            gIrSender.sendAck(frame.command);
+            const TxFailureCode txResult = gIrSender.sendAck(frame.command);
+            if (txResult != TxFailureCode::NONE) {
+                gLogger.log(wallNow,
+                            LogEventType::TRANSMIT_FAILED,
+                            frame.command,
+                            false,
+                            static_cast<uint8_t>(txResult));
+            }
         }
     }
 

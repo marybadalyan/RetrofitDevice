@@ -63,7 +63,13 @@ void loop() {
         return;
     }
 
-    gIrSender.sendCommand(command);
+    const TxFailureCode txResult = gIrSender.sendCommand(command);
+    if (txResult != TxFailureCode::NONE) {
+        Serial.print("Send failed, code=");
+        Serial.println(static_cast<int>(txResult));
+        return;
+    }
+
     Serial.print("Sent: ");
     Serial.println(static_cast<int>(command));
 #endif
