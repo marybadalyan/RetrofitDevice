@@ -7,6 +7,8 @@
 #include "scheduler/scheduler.h"
 #include "time/wall_clock.h"
 
+#include <array>
+
 #if __has_include(<Arduino.h>)
 #include <Arduino.h>
 #else
@@ -34,16 +36,54 @@ void loadDefaultSchedule() {
     gScheduler.addDailyEntry(22, 0, 0, Command::OFF, kWeekdayAll);
 }
 
-void mockHubInput(uint32_t nowMs) {
+struct HubMockScheduleEntry {
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
+    uint8_t weekdayMask;
+    Command command;
+    uint32_t lastFiredDateKey;
+};
+
+void mockHubInput(uint32_t nowMs, const WallClockSnapshot& wallNow) {
     // Mock hub commands for fallback mode; replace with WiFi/Blynk later.
-    static bool pushed = false;
     if (kSchedulerEnabled) {
         return;
     }
-    if (!pushed && nowMs > 3000) {
-        gHubReceiver.pushMockCommand(Command::ON);
-        gHubReceiver.pushMockCommand(Command::TEMP_UP);
-        pushed = true;
+
+    static std::array<HubMockScheduleEntry, 2> schedule = {{
+        {7, 0, 0, kWeekdayAll, Command::ON, 0},
+        {22, 0, 0, kWeekdayAll, Command::OFF, 0},
+    }};
+
+    if (!wallNow.valid || wallNow.dateKey == 0U) {
+        // Before time sync, keep minimal relative fallback behavior.
+        static bool bootstrapPushed = false;
+        if (!bootstrapPushed && nowMs > 3000) {
+            gHubReceiver.pushMockCommand(Command::ON);
+            bootstrapPushed = true;
+        }
+        return;
+    }
+
+    const uint8_t todayBit = static_cast<uint8_t>(1U << wallNow.weekday);
+    for (HubMockScheduleEntry& entry : schedule) {
+        if ((entry.weekdayMask & todayBit) == 0U) {
+            continue;
+        }
+        if (entry.lastFiredDateKey == wallNow.dateKey) {
+            continue;
+        }
+
+        const uint32_t targetSeconds =
+            (static_cast<uint32_t>(entry.hour) * 3600UL) + (static_cast<uint32_t>(entry.minute) * 60UL) + entry.second;
+        if (wallNow.secondsOfDay < targetSeconds) {
+            continue;
+        }
+
+        if (gHubReceiver.pushMockCommand(entry.command)) {
+            entry.lastFiredDateKey = wallNow.dateKey;
+        }
     }
 }
 }  // namespace
@@ -71,7 +111,7 @@ void loop() {
     const uint32_t nowUs = micros();
     const WallClockSnapshot wallNow = gWallClock.now(nowMs, nowUs);
 
-    mockHubInput(nowMs);
+    mockHubInput(nowMs, wallNow);
 
     // Scheduler/hub arbitration + ACK handling live in controller.
     gController.tick(nowMs, nowUs, wallNow);
