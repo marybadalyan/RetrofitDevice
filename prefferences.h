@@ -12,6 +12,11 @@ constexpr uint8_t kIrPwmResolutionBits = 8;
 constexpr bool kSchedulerEnabled = true;
 constexpr uint32_t kAckTimeoutMs = 120;
 constexpr uint8_t kMaxRetryCount = 2;
+constexpr float kDefaultTargetTemperatureC = 22.0F;
+// +/- deadband around target. Example: target=22C => ON at <=21C, OFF at >=23C.
+constexpr float kThermostatHysteresisC = 1.0F;
+// Set false if heater control path does not use a physical relay output pin.
+constexpr bool kUseRelayOutput = true;
 
 // Wall-clock settings (NTP + local timezone).
 constexpr const char* kNtpTimezone = "UTC0";

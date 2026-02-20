@@ -19,7 +19,7 @@ public:
                        Logger& logger);
 
     void begin(bool schedulerEnabled);
-    void tick(uint32_t nowMs, uint32_t nowUs, const WallClockSnapshot& wallNow);
+    void tick(uint32_t nowMs, uint32_t nowUs, const WallClockSnapshot& wallNow, float roomTemperatureC);
 
 private:
     enum class PendingStatus : uint8_t { IDLE = 0, WAITING_ACK = 1 };
@@ -29,6 +29,9 @@ private:
                            const WallClockSnapshot& wallNow,
                            Command& outCommand,
                            LogEventType& sourceType);
+    bool applyThermostatControlCommand(Command command);
+    bool shouldHeat(float roomTemperatureC) const;
+    void runThermostatLoop(const WallClockSnapshot& wallNow, float roomTemperatureC);
     void sendCommand(Command command, const WallClockSnapshot& wallNow, LogEventType sourceType);
     void handlePendingTimeout(const WallClockSnapshot& wallNow);
 
@@ -42,4 +45,7 @@ private:
     Command pendingCommand_ = Command::NONE;
     uint32_t pendingDeadlineMs_ = 0;
     uint8_t retryCount_ = 0;
+    bool powerEnabled_ = false;
+    bool heaterCommandedOn_ = false;
+    float targetTemperatureC_ = 22.0F;
 };

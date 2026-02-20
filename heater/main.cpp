@@ -18,9 +18,8 @@ IRReceiver gIrReceiver;
 IRSender gIrSender;
 Logger gLogger;
 WallClock gWallClock;
-Heater gHeater(22.0F);
+Heater gHeater;
 RelayDriver gRelay;
-TempSensor gSensor;
 DisplayDriver gDisplay;
 }  // namespace
 
@@ -31,7 +30,6 @@ void setup() {
     gIrReceiver.begin();
     gIrSender.begin();
     gRelay.begin();
-    gSensor.begin();
     gDisplay.begin();
 
     gLogger.beginPersistence("heater-log");
@@ -53,7 +51,6 @@ void loop() {
         }
     }
 
-    const float currentTemp = gSensor.readTemperatureC();
-    gRelay.setEnabled(gHeater.shouldHeat(currentTemp));
-    gDisplay.showTemperature(currentTemp, gHeater.targetTemperatureC(), gHeater.isOn());
+    gRelay.setEnabled(gHeater.powerEnabled());
+    gDisplay.showPowerState(gHeater.powerEnabled());
 }

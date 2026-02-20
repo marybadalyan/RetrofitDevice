@@ -1,5 +1,6 @@
 #include "IRReciever.h"
 #include "IRSender.h"
+#include "app/room_temp_sensor.h"
 #include "app/retrofit_controller.h"
 #include "hub/hub_receiver.h"
 #include "logger.h"
@@ -24,6 +25,7 @@ HubReceiver gHubReceiver;
 CommandScheduler gScheduler;
 Logger gLogger;
 WallClock gWallClock;
+RoomTempSensor gRoomTempSensor;
 RetrofitController gController(gIrSender, gIrReceiver, gHubReceiver, gScheduler, gLogger);
 
 void loadDefaultSchedule() {
@@ -95,6 +97,7 @@ void setup() {
 
     gIrSender.begin();
     gIrReceiver.begin();
+    gRoomTempSensor.begin();
 
     gLogger.beginPersistence("retrofit-log");
     gWallClock.beginNtp(kNtpTimezone, kNtpServerPrimary, kNtpServerSecondary, kNtpServerTertiary);
@@ -110,9 +113,10 @@ void loop() {
     const uint32_t nowMs = millis();
     const uint32_t nowUs = micros();
     const WallClockSnapshot wallNow = gWallClock.now(nowMs, nowUs);
+    const float roomTemperatureC = gRoomTempSensor.readTemperatureC();
 
     mockHubInput(nowMs, wallNow);
 
     // Scheduler/hub arbitration + ACK handling live in controller.
-    gController.tick(nowMs, nowUs, wallNow);
+    gController.tick(nowMs, nowUs, wallNow, roomTemperatureC);
 }
