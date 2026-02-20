@@ -4,13 +4,12 @@
 #include "app/retrofit_controller.h"
 #include "diagnostics/diag.h"
 #include "hub/hub_connectivity.h"
+#include "hub/hub_mock_scheduler.h"
 #include "hub/hub_receiver.h"
 #include "logger.h"
 #include "prefferences.h"
 #include "scheduler/scheduler.h"
 #include "time/wall_clock.h"
-
-#include <array>
 
 #if __has_include(<Arduino.h>)
 #include <Arduino.h>
@@ -29,6 +28,7 @@ Logger gLogger;
 WallClock gWallClock;
 RoomTempSensor gRoomTempSensor;
 HubConnectivity gHubConnectivity;
+HubMockScheduler gHubMockScheduler;
 RetrofitController gController(gIrSender, gIrReceiver, gHubReceiver, gScheduler, gLogger);
 
 void loadDefaultSchedule() {
@@ -39,57 +39,6 @@ void loadDefaultSchedule() {
     // Daily wall-clock entries (local time).
     gScheduler.addDailyEntry(8, 0, 0, Command::ON, kWeekdayWeekdays);
     gScheduler.addDailyEntry(22, 0, 0, Command::OFF, kWeekdayAll);
-}
-
-struct HubMockScheduleEntry {
-    uint8_t hour;
-    uint8_t minute;
-    uint8_t second;
-    uint8_t weekdayMask;
-    Command command;
-    uint32_t lastFiredDateKey;
-};
-
-void mockHubInput(uint32_t nowMs, const WallClockSnapshot& wallNow) {
-    // Mock hub commands for fallback mode; replace with real hub transport later.
-    if (kSchedulerEnabled) {
-        return;
-    }
-
-    static std::array<HubMockScheduleEntry, 2> schedule = {{
-        {7, 0, 0, kWeekdayAll, Command::ON, 0},
-        {22, 0, 0, kWeekdayAll, Command::OFF, 0},
-    }};
-
-    if (!wallNow.valid || wallNow.dateKey == 0U) {
-        // Before time sync, keep minimal relative fallback behavior.
-        static bool bootstrapPushed = false;
-        if (!bootstrapPushed && nowMs > 3000) {
-            gHubReceiver.pushMockCommand(Command::ON);
-            bootstrapPushed = true;
-        }
-        return;
-    }
-
-    const uint8_t todayBit = static_cast<uint8_t>(1U << wallNow.weekday);
-    for (HubMockScheduleEntry& entry : schedule) {
-        if ((entry.weekdayMask & todayBit) == 0U) {
-            continue;
-        }
-        if (entry.lastFiredDateKey == wallNow.dateKey) {
-            continue;
-        }
-
-        const uint32_t targetSeconds =
-            (static_cast<uint32_t>(entry.hour) * 3600UL) + (static_cast<uint32_t>(entry.minute) * 60UL) + entry.second;
-        if (wallNow.secondsOfDay < targetSeconds) {
-            continue;
-        }
-
-        if (gHubReceiver.pushMockCommand(entry.command)) {
-            entry.lastFiredDateKey = wallNow.dateKey;
-        }
-    }
 }
 
 void printHealthSnapshot(uint32_t nowMs, const WallClockSnapshot& wallNow, float roomTemperatureC) {
@@ -191,9 +140,10 @@ void loop() {
     const WallClockSnapshot wallNow = gWallClock.now(nowMs, nowUs);
     const float roomTemperatureC = gRoomTempSensor.readTemperatureC();
 
-    if (!gHubConnectivity.wifiConnected()) {
-        mockHubInput(nowMs, wallNow);
-    }
+    gHubMockScheduler.tick(nowMs,
+                           wallNow,
+                           gHubReceiver,
+                           (!gHubConnectivity.wifiConnected()) && kEnableHubMockScheduler);
 
     // Scheduler/hub arbitration + ACK handling live in controller.
     gController.tick(nowMs, nowUs, wallNow, roomTemperatureC);

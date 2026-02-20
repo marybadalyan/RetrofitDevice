@@ -26,6 +26,7 @@ constexpr const char* kWifiSsid = "";
 constexpr const char* kWifiPassword = "";
 constexpr bool kEnableIpTimezoneLookup = true;
 constexpr const char* kIpTimezoneUrl = "http://ip-api.com/json/?fields=status,timezone,offset";
+constexpr bool kEnableHubMockScheduler = false;
 
 // Wall-clock settings (NTP + local timezone).
 constexpr const char* kNtpTimezone = "UTC0";

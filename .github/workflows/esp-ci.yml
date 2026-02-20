@@ -51,3 +51,50 @@ jobs:
       - name: Build ${{ matrix.env_name }}
         working-directory: ${{ steps.pio-dir.outputs.dir }}
         run: pio run -e ${{ matrix.env_name }}
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('RetrofitDevice/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      - name: Detect PlatformIO project dir
+        id: pio-dir
+        run: |
+          if [ -f "platformio.ini" ]; then
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          elif [ -f "RetrofitDevice/platformio.ini" ]; then
+            echo "dir=RetrofitDevice" >> "$GITHUB_OUTPUT"
+          else
+            echo "Could not find platformio.ini" >&2
+            exit 1
+          fi
+
+      - name: Run Native Tests
+        working-directory: ${{ steps.pio-dir.outputs.dir }}
+        run: |
+          pio test -e native_test -v | tee test-output.log
+
+      - name: Upload Test Logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-test-logs
+          path: ${{ steps.pio-dir.outputs.dir }}/test-output.log
