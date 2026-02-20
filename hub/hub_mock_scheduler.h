@@ -20,11 +20,25 @@ private:
         uint8_t weekdayMask = kWeekdayAll;
         Command command = Command::NONE;
         uint32_t lastFiredDateKey = 0;
+
+        constexpr Entry() = default;
+        constexpr Entry(uint8_t hourIn,
+                        uint8_t minuteIn,
+                        uint8_t secondIn,
+                        uint8_t weekdayMaskIn,
+                        Command commandIn,
+                        uint32_t lastFiredDateKeyIn)
+            : hour(hourIn),
+              minute(minuteIn),
+              second(secondIn),
+              weekdayMask(weekdayMaskIn),
+              command(commandIn),
+              lastFiredDateKey(lastFiredDateKeyIn) {}
     };
 
     bool bootstrapPushed_ = false;
     std::array<Entry, 2> schedule_{{
-        {7, 0, 0, kWeekdayAll, Command::ON, 0},
-        {22, 0, 0, kWeekdayAll, Command::OFF, 0},
+        Entry{7, 0, 0, kWeekdayAll, Command::ON, 0},
+        Entry{22, 0, 0, kWeekdayAll, Command::OFF, 0},
     }};
 };

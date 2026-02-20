@@ -6,7 +6,11 @@
 
 #include "commands.h"
 
-#ifndef IRAM_ATTR
+#if __has_include(<Arduino.h>)
+#include <Arduino.h>
+#endif
+
+#if !defined(IRAM_ATTR)
 #define IRAM_ATTR
 #endif
 
