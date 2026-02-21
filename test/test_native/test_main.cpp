@@ -3,9 +3,15 @@
 #include <ctime>
 
 #include "IRSender.h"
+#define private public
+#include "IRReciever.h"
+#include "app/retrofit_controller.h"
+#undef private
+#include "heater/heater.h"
 #include "hub/hub_mock_scheduler.h"
 #include "hub/hub_receiver.h"
 #include "logger.h"
+#include "protocol.h"
 #include "scheduler/scheduler.h"
 #include "time/mock_clock.h"
 
@@ -105,6 +111,28 @@ WallClockSnapshot hostLocalNow(uint32_t bootMs, uint32_t bootUs) {
     out.dateKey = (static_cast<uint32_t>(out.year) * 10000UL) +
                   (static_cast<uint32_t>(out.month) * 100UL) + static_cast<uint32_t>(out.day);
     return out;
+}
+
+void injectAckFrame(IRReceiver& receiver, Command command) {
+    const protocol::Packet ackPacket = protocol::makeAck(command);
+
+    size_t index = 0;
+    receiver.pulseDurationsUs_[index++] = 9000;
+    receiver.pulseDurationsUs_[index++] = 4500;
+
+    auto appendByte = [&](uint8_t value) {
+        for (int bit = 7; bit >= 0; --bit) {
+            receiver.pulseDurationsUs_[index++] = 560;
+            const bool one = (value & (1U << bit)) != 0U;
+            receiver.pulseDurationsUs_[index++] = one ? 1690 : 560;
+        }
+    };
+
+    appendByte(static_cast<uint8_t>(ackPacket.header >> 8));
+    appendByte(static_cast<uint8_t>(ackPacket.header & 0xFFU));
+    appendByte(ackPacket.command);
+    appendByte(ackPacket.checksum);
+    receiver.pulseCount_ = index;
 }
 
 void test_scheduler_relative_due() {
@@ -310,6 +338,117 @@ void test_ntp_clock_from_set_unix_ms_progresses_with_boot_ms() {
     TEST_ASSERT_EQUAL_UINT64(1700000001500ULL, later.unixMs);
 }
 
+void test_retrofit_logs_command_then_tx_failure_in_native() {
+    IRSender sender;
+    sender.begin();
+    IRReceiver receiver;
+    receiver.begin();
+    HubReceiver hub;
+    CommandScheduler scheduler;
+    Logger logger;
+    RetrofitController controller(sender, receiver, hub, scheduler, logger);
+    controller.begin(false);
+
+    TEST_ASSERT_TRUE(hub.pushMockCommand(Command::ON));
+
+    WallClockSnapshot wall = makeWall(20260223, 2, 7, 0, 0, true);
+    wall.bootMs = 1000;
+    wall.bootUs = 1000000;
+
+    controller.tick(1000, 1000000, wall, 20.0F);
+
+    TEST_ASSERT_EQUAL_UINT32(3, logger.size());
+    const LogEntry& source = logger.entries()[0];
+    const LogEntry& thermostat = logger.entries()[1];
+    const LogEntry& txFail = logger.entries()[2];
+
+    TEST_ASSERT_EQUAL(LogEventType::HUB_COMMAND_RX, source.type);
+    TEST_ASSERT_EQUAL(Command::ON, source.command);
+    TEST_ASSERT_TRUE(source.success);
+
+    TEST_ASSERT_EQUAL(LogEventType::THERMOSTAT_CONTROL, thermostat.type);
+    TEST_ASSERT_EQUAL(Command::ON, thermostat.command);
+    TEST_ASSERT_TRUE(thermostat.success);
+
+    TEST_ASSERT_EQUAL(LogEventType::TRANSMIT_FAILED, txFail.type);
+    TEST_ASSERT_EQUAL(Command::ON, txFail.command);
+    TEST_ASSERT_FALSE(txFail.success);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(TxFailureCode::HW_UNAVAILABLE), txFail.detailCode);
+}
+
+void test_heater_logs_received_command_and_apply_result() {
+    Heater heater;
+    IRSender sender;
+    sender.begin();
+    Logger logger;
+
+    WallClockSnapshot wall = makeWall(20260223, 2, 7, 0, 1, true);
+    wall.bootMs = 2000;
+    wall.bootUs = 2000000;
+
+    const bool applied = heater.applyCommand(Command::ON);
+    logger.log(wall, LogEventType::STATE_CHANGE, Command::ON, applied);
+
+    if (applied) {
+        const TxFailureCode ackResult = sender.sendAck(Command::ON);
+        if (ackResult != TxFailureCode::NONE) {
+            logger.log(wall,
+                       LogEventType::TRANSMIT_FAILED,
+                       Command::ON,
+                       false,
+                       static_cast<uint8_t>(ackResult));
+        }
+    }
+
+    TEST_ASSERT_EQUAL_UINT32(2, logger.size());
+    const LogEntry& stateChange = logger.entries()[0];
+    const LogEntry& txFail = logger.entries()[1];
+
+    TEST_ASSERT_EQUAL(LogEventType::STATE_CHANGE, stateChange.type);
+    TEST_ASSERT_EQUAL(Command::ON, stateChange.command);
+    TEST_ASSERT_TRUE(stateChange.success);
+
+    TEST_ASSERT_EQUAL(LogEventType::TRANSMIT_FAILED, txFail.type);
+    TEST_ASSERT_EQUAL(Command::ON, txFail.command);
+    TEST_ASSERT_FALSE(txFail.success);
+}
+
+void test_retrofit_logs_ack_received_for_pending_command() {
+    IRSender sender;
+    sender.begin();
+    IRReceiver receiver;
+    receiver.begin();
+    HubReceiver hub;
+    CommandScheduler scheduler;
+    Logger logger;
+    RetrofitController controller(sender, receiver, hub, scheduler, logger);
+    controller.begin(false);
+
+    controller.pendingStatus_ = RetrofitController::PendingStatus::WAITING_ACK;
+    controller.pendingCommand_ = Command::ON;
+    controller.retryCount_ = 1;
+    controller.powerEnabled_ = true;
+
+    injectAckFrame(receiver, Command::ON);
+
+    WallClockSnapshot wall = makeWall(20260223, 2, 7, 0, 2, true);
+    wall.bootMs = 3000;
+    wall.bootUs = 3000000;
+
+    controller.tick(3000, 3000000, wall, 20.0F);
+
+    TEST_ASSERT_EQUAL_UINT32(1, logger.size());
+    const LogEntry& ack = logger.entries()[0];
+    TEST_ASSERT_EQUAL(LogEventType::ACK_RECEIVED, ack.type);
+    TEST_ASSERT_EQUAL(Command::ON, ack.command);
+    TEST_ASSERT_TRUE(ack.success);
+
+    TEST_ASSERT_EQUAL(RetrofitController::PendingStatus::IDLE, controller.pendingStatus_);
+    TEST_ASSERT_EQUAL(Command::NONE, controller.pendingCommand_);
+    TEST_ASSERT_EQUAL_UINT8(0, controller.retryCount_);
+    TEST_ASSERT_TRUE(controller.heaterCommandedOn_);
+}
+
 }  // namespace
 
 void setUp() {}
@@ -329,6 +468,9 @@ int main(int, char**) {
     RUN_TEST(test_timeline_logs_full_wall_clock_sequence);
     RUN_TEST(test_host_local_time_timeline_preview);
     RUN_TEST(test_ntp_clock_from_set_unix_ms_progresses_with_boot_ms);
+    RUN_TEST(test_retrofit_logs_command_then_tx_failure_in_native);
+    RUN_TEST(test_heater_logs_received_command_and_apply_result);
+    RUN_TEST(test_retrofit_logs_ack_received_for_pending_command);
 
     return UNITY_END();
 }
