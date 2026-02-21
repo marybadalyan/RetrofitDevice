@@ -11,12 +11,23 @@ namespace {
 IRSender gIrSender;
 
 #if __has_include(<Arduino.h>)
+constexpr bool kUseSinglePowerButton = true;
+constexpr int kPowerButtonPin = 18;
 constexpr int kOnButtonPin = 18;
 constexpr int kOffButtonPin = 19;
+constexpr int kTempUpButtonPin = 21;
+constexpr int kTempDownButtonPin = 22;
+constexpr uint8_t kMaxButtons = 4;
 constexpr uint32_t kButtonDebounceMs = 40;
+
+enum class ButtonAction : uint8_t {
+    COMMAND = 0,
+    POWER_TOGGLE = 1,
+};
 
 struct ButtonState {
     int pin;
+    ButtonAction action;
     Command command;
     const char* label;
     bool lastRawPressed;
@@ -24,13 +35,12 @@ struct ButtonState {
     uint32_t lastRawChangeMs;
 };
 
-ButtonState gButtons[] = {
-    {kOnButtonPin, Command::ON, "ON", false, false, 0},
-    {kOffButtonPin, Command::OFF, "OFF", false, false, 0},
-};
+ButtonState gButtons[kMaxButtons];
+uint8_t gButtonCount = 0;
+bool gPowerExpectedOn = false;
 #endif
 
-void sendWithLog(Command command, const char* source) {
+bool sendWithLog(Command command, const char* source) {
 #if __has_include(<Arduino.h>)
     Serial.print("[REMOTE] TX request source=");
     Serial.print(source);
@@ -48,7 +58,7 @@ void sendWithLog(Command command, const char* source) {
         Serial.print(commandToString(command));
         Serial.print(" code=");
         Serial.println(static_cast<int>(txResult));
-        return;
+        return false;
     }
 
     Serial.print("[REMOTE] TX ok source=");
@@ -57,15 +67,67 @@ void sendWithLog(Command command, const char* source) {
     Serial.println(commandToString(command));
 #else
     (void)source;
-    (void)txResult;
 #endif
+    return txResult == TxFailureCode::NONE;
 }
+
+#if __has_include(<Arduino.h>)
+void updatePowerEstimate(Command command) {
+    if (command == Command::ON) {
+        gPowerExpectedOn = true;
+        return;
+    }
+    if (command == Command::OFF) {
+        gPowerExpectedOn = false;
+    }
+}
+
+void addButton(int pin, ButtonAction action, Command command, const char* label) {
+    if (gButtonCount >= kMaxButtons) {
+        return;
+    }
+
+    ButtonState& button = gButtons[gButtonCount++];
+    button.pin = pin;
+    button.action = action;
+    button.command = command;
+    button.label = label;
+    button.lastRawPressed = false;
+    button.stablePressed = false;
+    button.lastRawChangeMs = 0;
+}
+
+void configureButtons() {
+    gButtonCount = 0;
+    if (kUseSinglePowerButton) {
+        addButton(kPowerButtonPin, ButtonAction::POWER_TOGGLE, Command::NONE, "POWER");
+    } else {
+        addButton(kOnButtonPin, ButtonAction::COMMAND, Command::ON, "ON");
+        addButton(kOffButtonPin, ButtonAction::COMMAND, Command::OFF, "OFF");
+    }
+    addButton(kTempUpButtonPin, ButtonAction::COMMAND, Command::TEMP_UP, "TEMP_UP");
+    addButton(kTempDownButtonPin, ButtonAction::COMMAND, Command::TEMP_DOWN, "TEMP_DOWN");
+}
+#endif
 
 void printHelp() {
 #if __has_include(<Arduino.h>)
     Serial.println("Remote controller ready.");
     Serial.println("Commands: on/off/up/down or 1/2/3/4");
-    Serial.println("Button wiring: ON->GPIO18 to GND, OFF->GPIO19 to GND (INPUT_PULLUP).");
+    Serial.println("Buttons use INPUT_PULLUP (connect button to GND).");
+    if (kUseSinglePowerButton) {
+        Serial.print("POWER(toggle) -> GPIO");
+        Serial.println(kPowerButtonPin);
+    } else {
+        Serial.print("ON -> GPIO");
+        Serial.println(kOnButtonPin);
+        Serial.print("OFF -> GPIO");
+        Serial.println(kOffButtonPin);
+    }
+    Serial.print("TEMP_UP -> GPIO");
+    Serial.println(kTempUpButtonPin);
+    Serial.print("TEMP_DOWN -> GPIO");
+    Serial.println(kTempDownButtonPin);
 #endif
 }
 
@@ -93,7 +155,9 @@ bool parseCommand(const String& line, Command& outCommand) {
 
 #if __has_include(<Arduino.h>)
 void setupButtons() {
-    for (ButtonState& button : gButtons) {
+    configureButtons();
+    for (uint8_t i = 0; i < gButtonCount; ++i) {
+        ButtonState& button = gButtons[i];
         pinMode(button.pin, INPUT_PULLUP);
         const bool rawPressed = (digitalRead(button.pin) == LOW);
         button.lastRawPressed = rawPressed;
@@ -104,7 +168,8 @@ void setupButtons() {
 
 void pollButtons() {
     const uint32_t nowMs = millis();
-    for (ButtonState& button : gButtons) {
+    for (uint8_t i = 0; i < gButtonCount; ++i) {
+        ButtonState& button = gButtons[i];
         const bool rawPressed = (digitalRead(button.pin) == LOW);
         if (rawPressed != button.lastRawPressed) {
             button.lastRawPressed = rawPressed;
@@ -123,11 +188,21 @@ void pollButtons() {
             continue;
         }
 
+        Command command = button.command;
+        if (button.action == ButtonAction::POWER_TOGGLE) {
+            command = gPowerExpectedOn ? Command::OFF : Command::ON;
+        }
+
         Serial.print("[REMOTE] Button ");
         Serial.print(button.label);
         Serial.print(" pressed on GPIO");
-        Serial.println(button.pin);
-        sendWithLog(button.command, "BUTTON");
+        Serial.print(button.pin);
+        Serial.print(" cmd=");
+        Serial.println(commandToString(command));
+
+        if (sendWithLog(command, "BUTTON")) {
+            updatePowerEstimate(command);
+        }
     }
 }
 #endif
@@ -157,7 +232,9 @@ void loop() {
             Serial.println("Unknown command. Use on/off/up/down or 1/2/3/4");
             return;
         }
-        sendWithLog(command, "SERIAL");
+        if (sendWithLog(command, "SERIAL")) {
+            updatePowerEstimate(command);
+        }
     }
 #endif
 }
