@@ -10,33 +10,54 @@ Scanning dependencies...
 Dependency Graph
 |-- Unity @ 2.6.1 (License: MIT, Path: /Users/mbadalyan/Desktop/diplomayin/RetrofitDevice/.pio/libdeps/native_test/Unity)
 Building in test mode
+gcc -o .pio/build/native_test/unity_config_build/unity_config.o -c -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest .pio/build/native_test/unity_config/unity_config.c
+g++ -o .pio/build/native_test/test/test_native/test_main.o -c -std=gnu++17 -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest test/test_native/test_main.cpp
+g++ -o .pio/build/native_test/src/IRReciever.o -c -std=gnu++17 -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest IRReciever.cpp
+g++ -o .pio/build/native_test/src/IRSender.o -c -std=gnu++17 -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest IRSender.cpp
+g++ -o .pio/build/native_test/src/app/retrofit_controller.o -c -std=gnu++17 -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest app/retrofit_controller.cpp
+g++ -o .pio/build/native_test/src/app/room_temp_sensor.o -c -std=gnu++17 -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest app/room_temp_sensor.cpp
+g++ -o .pio/build/native_test/src/heater/heater.o -c -std=gnu++17 -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest heater/heater.cpp
+g++ -o .pio/build/native_test/src/hub/hub_connectivity.o -c -std=gnu++17 -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest hub/hub_connectivity.cpp
+g++ -o .pio/build/native_test/src/hub/hub_mock_scheduler.o -c -std=gnu++17 -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest hub/hub_mock_scheduler.cpp
+g++ -o .pio/build/native_test/src/hub/hub_receiver.o -c -std=gnu++17 -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest hub/hub_receiver.cpp
+g++ -o .pio/build/native_test/src/logger.o -c -std=gnu++17 -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest logger.cpp
+g++ -o .pio/build/native_test/src/protocol.o -c -std=gnu++17 -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest protocol.cpp
+g++ -o .pio/build/native_test/src/scheduler/scheduler.o -c -std=gnu++17 -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest scheduler/scheduler.cpp
+g++ -o .pio/build/native_test/src/time/wall_clock.o -c -std=gnu++17 -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config -I.pio/build/native_test/unity_config -Itest/test_native -Itest time/wall_clock.cpp
+gcc -o .pio/build/native_test/lib851/Unity/unity.o -c -DPLATFORMIO=60119 -DPIO_UNIT_TESTING -DUNITY_INCLUDE_CONFIG_H -I.pio/libdeps/native_test/Unity/src -I.pio/build/native_test/unity_config .pio/libdeps/native_test/Unity/src/unity.c
+ar rc .pio/build/native_test/lib851/libUnity.a .pio/build/native_test/lib851/Unity/unity.o
+ranlib .pio/build/native_test/lib851/libUnity.a
+g++ -o .pio/build/native_test/program .pio/build/native_test/unity_config_build/unity_config.o .pio/build/native_test/test/test_native/test_main.o .pio/build/native_test/src/IRReciever.o .pio/build/native_test/src/IRSender.o .pio/build/native_test/src/app/retrofit_controller.o .pio/build/native_test/src/app/room_temp_sensor.o .pio/build/native_test/src/heater/heater.o .pio/build/native_test/src/hub/hub_connectivity.o .pio/build/native_test/src/hub/hub_mock_scheduler.o .pio/build/native_test/src/hub/hub_receiver.o .pio/build/native_test/src/logger.o .pio/build/native_test/src/protocol.o .pio/build/native_test/src/scheduler/scheduler.o .pio/build/native_test/src/time/wall_clock.o -L.pio/build/native_test .pio/build/native_test/lib851/libUnity.a
 
 
 Testing...
-test/test_native/test_main.cpp:321:test_scheduler_relative_due:PASS
-test/test_native/test_main.cpp:322:test_scheduler_daily_once_per_day:PASS
-test/test_native/test_main.cpp:323:test_scheduler_next_planned_command:PASS
-test/test_native/test_main.cpp:324:test_logger_detail_code_is_recorded:PASS
-test/test_native/test_main.cpp:325:test_ir_sender_reports_hardware_unavailable_in_native:PASS
-test/test_native/test_main.cpp:326:test_hub_mock_scheduler_pushes_expected_commands:PASS
-test/test_native/test_main.cpp:327:test_hub_mock_scheduler_can_be_disabled:PASS
-test/test_native/test_main.cpp:328:test_mock_clock_daily_schedule_at_fixed_times:PASS
-test/test_native/test_main.cpp:329:test_timeline_logs_full_wall_clock_sequence:PASS
+test/test_native/test_main.cpp:460:test_scheduler_relative_due:PASS
+test/test_native/test_main.cpp:461:test_scheduler_daily_once_per_day:PASS
+test/test_native/test_main.cpp:462:test_scheduler_next_planned_command:PASS
+test/test_native/test_main.cpp:463:test_logger_detail_code_is_recorded:PASS
+test/test_native/test_main.cpp:464:test_ir_sender_reports_hardware_unavailable_in_native:PASS
+test/test_native/test_main.cpp:465:test_hub_mock_scheduler_pushes_expected_commands:PASS
+test/test_native/test_main.cpp:466:test_hub_mock_scheduler_can_be_disabled:PASS
+test/test_native/test_main.cpp:467:test_mock_clock_daily_schedule_at_fixed_times:PASS
+test/test_native/test_main.cpp:468:test_timeline_logs_full_wall_clock_sequence:PASS
 
 [TIMELINE-LOCAL] ---- BEGIN ----
-[TIMELINE-LOCAL] 20260221 13:18:26 SCHEDULE_COMMAND  ON        success=1 code=0
-[TIMELINE-LOCAL] 20260221 13:18:26 COMMAND_SENT      ON        success=1 code=0
-[TIMELINE-LOCAL] 20260221 13:18:26 ACK_RECEIVED      ON        success=1 code=0
+[TIMELINE-LOCAL] 20260221 21:07:15 SCHEDULE_COMMAND  ON        success=1 code=0
+[TIMELINE-LOCAL] 20260221 21:07:15 COMMAND_SENT      ON        success=1 code=0
+[TIMELINE-LOCAL] 20260221 21:07:15 ACK_RECEIVED      ON        success=1 code=0
 [TIMELINE-LOCAL] ---- END ----
 
-test/test_native/test_main.cpp:330:test_host_local_time_timeline_preview:PASS
-test/test_native/test_main.cpp:331:test_ntp_clock_from_set_unix_ms_progresses_with_boot_ms:PASS
+test/test_native/test_main.cpp:469:test_host_local_time_timeline_preview:PASS
+test/test_native/test_main.cpp:470:test_ntp_clock_from_set_unix_ms_progresses_with_boot_ms:PASS
+test/test_native/test_main.cpp:471:test_retrofit_logs_command_then_tx_failure_in_native:PASS
+test/test_native/test_main.cpp:472:test_heater_logs_received_command_and_apply_result:PASS
+test/test_native/test_main.cpp:473:test_retrofit_logs_ack_received_for_pending_command:PASS
 
 -----------------------
-11 Tests 0 Failures 0 Ignored 
+14 Tests 0 Failures 0 Ignored 
 OK
 
--------------- native_test:test_native [PASSED] Took 0.26 seconds --------------
+-------------- native_test:test_native [PASSED] Took 1.88 seconds --------------
 
 =================================== SUMMARY ===================================
 Environment    Test         Status    Duration
@@ -44,5 +65,5 @@ Environment    Test         Status    Duration
 retrofit       test_native  SKIPPED
 heater         test_native  SKIPPED
 remote         test_native  SKIPPED
-native_test    test_native  PASSED    00:00:00.257
-================= 11 test cases: 11 succeeded in 00:00:00.257 =================
+native_test    test_native  PASSED    00:00:01.885
+================= 14 test cases: 14 succeeded in 00:00:01.885 =================

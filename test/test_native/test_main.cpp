@@ -449,6 +449,104 @@ void test_retrofit_logs_ack_received_for_pending_command() {
     TEST_ASSERT_TRUE(controller.heaterCommandedOn_);
 }
 
+void test_scheduler_has_priority_over_hub_when_enabled() {
+    IRSender sender;
+    sender.begin();
+    IRReceiver receiver;
+    receiver.begin();
+    HubReceiver hub;
+    CommandScheduler scheduler;
+    Logger logger;
+    RetrofitController controller(sender, receiver, hub, scheduler, logger);
+    controller.begin(true);
+
+    TEST_ASSERT_TRUE(scheduler.addEntry(500, Command::OFF));
+    TEST_ASSERT_TRUE(hub.pushMockCommand(Command::ON));
+
+    WallClockSnapshot wall = makeWall(20260223, 2, 7, 0, 3, true);
+    wall.bootMs = 500;
+    wall.bootUs = 500000;
+
+    controller.tick(500, 500000, wall, 20.0F);
+
+    TEST_ASSERT_TRUE(logger.size() >= 1);
+    const LogEntry& first = logger.entries()[0];
+    TEST_ASSERT_EQUAL(LogEventType::SCHEDULE_COMMAND, first.type);
+    TEST_ASSERT_EQUAL(Command::OFF, first.command);
+}
+
+void test_hub_temp_up_changes_target_without_transmit_when_power_off() {
+    IRSender sender;
+    sender.begin();
+    IRReceiver receiver;
+    receiver.begin();
+    HubReceiver hub;
+    CommandScheduler scheduler;
+    Logger logger;
+    RetrofitController controller(sender, receiver, hub, scheduler, logger);
+    controller.begin(false);
+
+    const float initialTarget = controller.healthSnapshot().targetTemperatureC;
+    TEST_ASSERT_TRUE(hub.pushMockCommand(Command::TEMP_UP));
+
+    WallClockSnapshot wall = makeWall(20260223, 2, 7, 0, 4, true);
+    wall.bootMs = 600;
+    wall.bootUs = 600000;
+
+    controller.tick(600, 600000, wall, 20.0F);
+
+    const RetrofitController::HealthSnapshot after = controller.healthSnapshot();
+    TEST_ASSERT_FLOAT_WITHIN(0.01F, initialTarget + 1.0F, after.targetTemperatureC);
+    TEST_ASSERT_FALSE(after.waitingAck);
+
+    TEST_ASSERT_EQUAL_UINT32(1, logger.size());
+    const LogEntry& only = logger.entries()[0];
+    TEST_ASSERT_EQUAL(LogEventType::HUB_COMMAND_RX, only.type);
+    TEST_ASSERT_EQUAL(Command::TEMP_UP, only.command);
+}
+
+void test_retrofit_timeout_retries_then_drops_pending_command() {
+    IRSender sender;
+    sender.begin();
+    IRReceiver receiver;
+    receiver.begin();
+    HubReceiver hub;
+    CommandScheduler scheduler;
+    Logger logger;
+    RetrofitController controller(sender, receiver, hub, scheduler, logger);
+    controller.begin(false);
+
+    controller.pendingStatus_ = RetrofitController::PendingStatus::WAITING_ACK;
+    controller.pendingCommand_ = Command::ON;
+    controller.pendingDeadlineMs_ = 1000;
+    controller.retryCount_ = 0;
+    controller.powerEnabled_ = true;
+
+    auto tickTimeout = [&](uint32_t nowMs) {
+        WallClockSnapshot wall = makeWall(20260223, 2, 7, 0, 5, true);
+        wall.bootMs = nowMs;
+        wall.bootUs = nowMs * 1000U;
+        controller.tick(nowMs, wall.bootUs, wall, 20.0F);
+    };
+
+    tickTimeout(1000);
+    tickTimeout(1200);
+    tickTimeout(1400);
+
+    const RetrofitController::HealthSnapshot after = controller.healthSnapshot();
+    TEST_ASSERT_FALSE(after.waitingAck);
+    TEST_ASSERT_EQUAL(Command::NONE, after.pendingCommand);
+    TEST_ASSERT_EQUAL_UINT8(0, after.retryCount);
+
+    TEST_ASSERT_TRUE(logger.size() >= 3);
+    const LogEntry& firstRetry = logger.entries()[0];
+    const LogEntry& secondRetry = logger.entries()[1];
+    const LogEntry& drop = logger.entries()[2];
+    TEST_ASSERT_EQUAL(LogEventType::TRANSMIT_FAILED, firstRetry.type);
+    TEST_ASSERT_EQUAL(LogEventType::TRANSMIT_FAILED, secondRetry.type);
+    TEST_ASSERT_EQUAL(LogEventType::COMMAND_DROPPED, drop.type);
+}
+
 }  // namespace
 
 void setUp() {}
@@ -471,6 +569,9 @@ int main(int, char**) {
     RUN_TEST(test_retrofit_logs_command_then_tx_failure_in_native);
     RUN_TEST(test_heater_logs_received_command_and_apply_result);
     RUN_TEST(test_retrofit_logs_ack_received_for_pending_command);
+    RUN_TEST(test_scheduler_has_priority_over_hub_when_enabled);
+    RUN_TEST(test_hub_temp_up_changes_target_without_transmit_when_power_off);
+    RUN_TEST(test_retrofit_timeout_retries_then_drops_pending_command);
 
     return UNITY_END();
 }
