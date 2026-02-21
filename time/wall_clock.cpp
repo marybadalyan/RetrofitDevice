@@ -24,10 +24,10 @@ uint32_t makeDateKey(const tm& t) {
 #endif
 }  // namespace
 
-void WallClock::beginNtp(const char* timezone,
-                         const char* ntp1,
-                         const char* ntp2,
-                         const char* ntp3) {
+void NtpClock::beginNtp(const char* timezone,
+                        const char* ntp1,
+                        const char* ntp2,
+                        const char* ntp3) {
 #if __has_include(<Arduino.h>) && __has_include(<time.h>)
     if (timezone != nullptr) {
         setenv("TZ", timezone, 1);
@@ -46,17 +46,17 @@ void WallClock::beginNtp(const char* timezone,
 #endif
 }
 
-void WallClock::setUnixTimeMs(uint64_t unixMs, uint32_t nowMs) {
+void NtpClock::setUnixTimeMs(uint64_t unixMs, uint32_t nowMs) {
     baseUnixMs_ = unixMs;
     baseNowMs_ = nowMs;
     valid_ = true;
 }
 
-bool WallClock::isValid() const {
+bool NtpClock::isValid() const {
     return valid_;
 }
 
-bool WallClock::refreshFromSystemTime(uint32_t nowMs) {
+bool NtpClock::refreshFromSystemTime(uint32_t nowMs) {
 #if __has_include(<time.h>)
     const time_t current = time(nullptr);
     if (current <= static_cast<time_t>(kUnixSanityFloor)) {
@@ -71,7 +71,7 @@ bool WallClock::refreshFromSystemTime(uint32_t nowMs) {
 #endif
 }
 
-WallClockSnapshot WallClock::now(uint32_t nowMs, uint32_t nowUs) {
+WallClockSnapshot NtpClock::now(uint32_t nowMs, uint32_t nowUs) {
     WallClockSnapshot out{};
     out.bootMs = nowMs;
     out.bootUs = nowUs;

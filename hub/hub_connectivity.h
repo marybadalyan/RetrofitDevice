@@ -8,8 +8,8 @@
 
 class HubConnectivity {
 public:
-    void begin(HubReceiver& hubReceiver, WallClock& wallClock);
-    void tick(uint32_t nowMs, HubReceiver& hubReceiver, WallClock& wallClock);
+    void begin(HubReceiver& hubReceiver, NtpClock& wallClock);
+    void tick(uint32_t nowMs, HubReceiver& hubReceiver, NtpClock& wallClock);
 
     bool wifiConnected() const;
     bool timeConfigured() const;

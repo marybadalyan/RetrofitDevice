@@ -1,0 +1,48 @@
+Collected 1 tests (test_native)
+
+Processing test_native in native_test environment
+--------------------------------------------------------------------------------
+Building...
+LDF: Library Dependency Finder -> https://bit.ly/configure-pio-ldf
+LDF Modes: Finder ~ chain, Compatibility ~ soft
+Found 1 compatible libraries
+Scanning dependencies...
+Dependency Graph
+|-- Unity @ 2.6.1 (License: MIT, Path: /Users/mbadalyan/Desktop/diplomayin/RetrofitDevice/.pio/libdeps/native_test/Unity)
+Building in test mode
+
+
+Testing...
+test/test_native/test_main.cpp:321:test_scheduler_relative_due:PASS
+test/test_native/test_main.cpp:322:test_scheduler_daily_once_per_day:PASS
+test/test_native/test_main.cpp:323:test_scheduler_next_planned_command:PASS
+test/test_native/test_main.cpp:324:test_logger_detail_code_is_recorded:PASS
+test/test_native/test_main.cpp:325:test_ir_sender_reports_hardware_unavailable_in_native:PASS
+test/test_native/test_main.cpp:326:test_hub_mock_scheduler_pushes_expected_commands:PASS
+test/test_native/test_main.cpp:327:test_hub_mock_scheduler_can_be_disabled:PASS
+test/test_native/test_main.cpp:328:test_mock_clock_daily_schedule_at_fixed_times:PASS
+test/test_native/test_main.cpp:329:test_timeline_logs_full_wall_clock_sequence:PASS
+
+[TIMELINE-LOCAL] ---- BEGIN ----
+[TIMELINE-LOCAL] 20260221 13:18:26 SCHEDULE_COMMAND  ON        success=1 code=0
+[TIMELINE-LOCAL] 20260221 13:18:26 COMMAND_SENT      ON        success=1 code=0
+[TIMELINE-LOCAL] 20260221 13:18:26 ACK_RECEIVED      ON        success=1 code=0
+[TIMELINE-LOCAL] ---- END ----
+
+test/test_native/test_main.cpp:330:test_host_local_time_timeline_preview:PASS
+test/test_native/test_main.cpp:331:test_ntp_clock_from_set_unix_ms_progresses_with_boot_ms:PASS
+
+-----------------------
+11 Tests 0 Failures 0 Ignored 
+OK
+
+-------------- native_test:test_native [PASSED] Took 0.26 seconds --------------
+
+=================================== SUMMARY ===================================
+Environment    Test         Status    Duration
+-------------  -----------  --------  ------------
+retrofit       test_native  SKIPPED
+heater         test_native  SKIPPED
+remote         test_native  SKIPPED
+native_test    test_native  PASSED    00:00:00.257
+================= 11 test cases: 11 succeeded in 00:00:00.257 =================

@@ -69,7 +69,7 @@ bool extractJsonString(const String& payload, const char* key, char* outValue, s
 
 }  // namespace
 
-void HubConnectivity::begin(HubReceiver& hubReceiver, WallClock& wallClock) {
+void HubConnectivity::begin(HubReceiver& hubReceiver, NtpClock& wallClock) {
 #if HUB_HAS_WIFI
     if (hasWifiCredentials()) {
         WiFi.mode(WIFI_STA);
@@ -85,7 +85,7 @@ void HubConnectivity::begin(HubReceiver& hubReceiver, WallClock& wallClock) {
     (void)wallClock;
 }
 
-void HubConnectivity::tick(uint32_t nowMs, HubReceiver& hubReceiver, WallClock& wallClock) {
+void HubConnectivity::tick(uint32_t nowMs, HubReceiver& hubReceiver, NtpClock& wallClock) {
     (void)hubReceiver;
 
 #if HUB_HAS_WIFI

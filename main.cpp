@@ -25,7 +25,7 @@ IRReceiver gIrReceiver;
 HubReceiver gHubReceiver;
 CommandScheduler gScheduler;
 Logger gLogger;
-WallClock gWallClock;
+NtpClock gWallClock;
 RoomTempSensor gRoomTempSensor;
 HubConnectivity gHubConnectivity;
 HubMockScheduler gHubMockScheduler;
