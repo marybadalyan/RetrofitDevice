@@ -16,12 +16,12 @@ constexpr int kOffButtonPin = 19;
 constexpr uint32_t kButtonDebounceMs = 40;
 
 struct ButtonState {
-    int pin = -1;
-    Command command = Command::NONE;
-    const char* label = "";
-    bool lastRawPressed = false;
-    bool stablePressed = false;
-    uint32_t lastRawChangeMs = 0;
+    int pin;
+    Command command;
+    const char* label;
+    bool lastRawPressed;
+    bool stablePressed;
+    uint32_t lastRawChangeMs;
 };
 
 ButtonState gButtons[] = {
