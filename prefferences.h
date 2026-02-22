@@ -12,6 +12,8 @@ constexpr uint8_t kIrPwmResolutionBits = 8;
 constexpr bool kSchedulerEnabled = true;
 constexpr uint32_t kAckTimeoutMs = 120;
 constexpr uint8_t kMaxRetryCount = 2;
+// Prevent immediate re-send right after command drop to avoid tight failure loops.
+constexpr uint32_t kPostDropCooldownMs = 1000;
 constexpr float kDefaultTargetTemperatureC = 22.0F;
 // +/- deadband around target. Example: target=22C => ON at <=21C, OFF at >=23C.
 constexpr float kThermostatHysteresisC = 1.0F;

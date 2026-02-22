@@ -53,6 +53,10 @@ const char* eventToString(LogEventType type) {
             return "THERMOSTAT_CONTROL";
         case LogEventType::TRANSMIT_FAILED:
             return "TRANSMIT_FAILED";
+        case LogEventType::IR_FRAME_RX:
+            return "IR_FRAME_RX";
+        case LogEventType::ACK_SENT:
+            return "ACK_SENT";
         default:
             return "UNKNOWN";
     }
@@ -111,6 +115,31 @@ WallClockSnapshot hostLocalNow(uint32_t bootMs, uint32_t bootUs) {
     out.dateKey = (static_cast<uint32_t>(out.year) * 10000UL) +
                   (static_cast<uint32_t>(out.month) * 100UL) + static_cast<uint32_t>(out.day);
     return out;
+}
+
+void secondsToHms(uint32_t secondsOfDay, uint8_t& hour, uint8_t& minute, uint8_t& second) {
+    const uint32_t bounded = secondsOfDay % 86400U;
+    hour = static_cast<uint8_t>(bounded / 3600U);
+    minute = static_cast<uint8_t>((bounded % 3600U) / 60U);
+    second = static_cast<uint8_t>(bounded % 60U);
+}
+
+WallClockSnapshot hostLocalWithSecondOffset(uint32_t bootMs, uint32_t bootUs, uint32_t offsetSec) {
+    WallClockSnapshot wall = hostLocalNow(bootMs, bootUs);
+    if (!wall.valid) {
+        return makeWall(20260223, 2, 7, 0, static_cast<uint8_t>(offsetSec % 60U), true);
+    }
+
+    uint8_t hour = wall.hour;
+    uint8_t minute = wall.minute;
+    uint8_t second = wall.second;
+    secondsToHms(wall.secondsOfDay + offsetSec, hour, minute, second);
+    wall.hour = hour;
+    wall.minute = minute;
+    wall.second = second;
+    wall.secondsOfDay =
+        (static_cast<uint32_t>(wall.hour) * 3600UL) + (static_cast<uint32_t>(wall.minute) * 60UL) + wall.second;
+    return wall;
 }
 
 void injectAckFrame(IRReceiver& receiver, Command command) {
@@ -284,13 +313,39 @@ void test_timeline_logs_full_wall_clock_sequence() {
     Logger logger;
     CommandScheduler scheduler;
     scheduler.setEnabled(true);
-    TEST_ASSERT_TRUE(scheduler.addDailyEntry(5, 15, 0, Command::ON, kWeekdayAll));
-    TEST_ASSERT_TRUE(scheduler.addDailyEntry(5, 20, 0, Command::OFF, kWeekdayAll));
+    const WallClockSnapshot base = hostLocalNow(1000, 1000000);
+    if (!base.valid) {
+        TEST_IGNORE_MESSAGE("Host local time unavailable");
+    }
+    if (base.secondsOfDay >= (86400U - 8U)) {
+        TEST_IGNORE_MESSAGE("Host local time too close to midnight for this timeline test");
+    }
+
+    const uint32_t onSec = base.secondsOfDay + 2U;
+    const uint32_t betweenSec = base.secondsOfDay + 3U;
+    const uint32_t offSec = base.secondsOfDay + 5U;
+
+    uint8_t onHour = 0;
+    uint8_t onMinute = 0;
+    uint8_t onSecond = 0;
+    uint8_t betweenHour = 0;
+    uint8_t betweenMinute = 0;
+    uint8_t betweenSecond = 0;
+    uint8_t offHour = 0;
+    uint8_t offMinute = 0;
+    uint8_t offSecond = 0;
+
+    secondsToHms(onSec, onHour, onMinute, onSecond);
+    secondsToHms(betweenSec, betweenHour, betweenMinute, betweenSecond);
+    secondsToHms(offSec, offHour, offMinute, offSecond);
+
+    TEST_ASSERT_TRUE(scheduler.addDailyEntry(onHour, onMinute, onSecond, Command::ON, kWeekdayAll));
+    TEST_ASSERT_TRUE(scheduler.addDailyEntry(offHour, offMinute, offSecond, Command::OFF, kWeekdayAll));
 
     MockClock clock;
 
     auto tick = [&](uint32_t nowMs, uint8_t hour, uint8_t minute, uint8_t second) {
-        clock.setWallTime(20260223, 1, hour, minute, second, true);
+        clock.setWallTime(base.dateKey, base.weekday, hour, minute, second, true);
         const WallClockSnapshot wall = clock.now(nowMs, nowMs * 1000U);
 
         Command due = Command::NONE;
@@ -301,10 +356,10 @@ void test_timeline_logs_full_wall_clock_sequence() {
         }
     };
 
-    tick(1000, 5, 14, 59);
-    tick(2000, 5, 15, 0);
-    tick(3000, 5, 16, 0);
-    tick(4000, 5, 20, 0);
+    tick(1000, base.hour, base.minute, base.second);
+    tick(2000, onHour, onMinute, onSecond);
+    tick(3000, betweenHour, betweenMinute, betweenSecond);
+    tick(4000, offHour, offMinute, offSecond);
 
     TEST_ASSERT_EQUAL_UINT32(6, logger.size());
     // Keep this deterministic test silent; local-time timeline is printed by host test below.
@@ -351,9 +406,7 @@ void test_retrofit_logs_command_then_tx_failure_in_native() {
 
     TEST_ASSERT_TRUE(hub.pushMockCommand(Command::ON));
 
-    WallClockSnapshot wall = makeWall(20260223, 2, 7, 0, 0, true);
-    wall.bootMs = 1000;
-    wall.bootUs = 1000000;
+    WallClockSnapshot wall = hostLocalWithSecondOffset(1000, 1000000, 0);
 
     controller.tick(1000, 1000000, wall, 20.0F);
 
@@ -382,9 +435,7 @@ void test_heater_logs_received_command_and_apply_result() {
     sender.begin();
     Logger logger;
 
-    WallClockSnapshot wall = makeWall(20260223, 2, 7, 0, 1, true);
-    wall.bootMs = 2000;
-    wall.bootUs = 2000000;
+    WallClockSnapshot wall = hostLocalWithSecondOffset(2000, 2000000, 1);
 
     const bool applied = heater.applyCommand(Command::ON);
     logger.log(wall, LogEventType::STATE_CHANGE, Command::ON, applied);
@@ -431,9 +482,7 @@ void test_retrofit_logs_ack_received_for_pending_command() {
 
     injectAckFrame(receiver, Command::ON);
 
-    WallClockSnapshot wall = makeWall(20260223, 2, 7, 0, 2, true);
-    wall.bootMs = 3000;
-    wall.bootUs = 3000000;
+    WallClockSnapshot wall = hostLocalWithSecondOffset(3000, 3000000, 2);
 
     controller.tick(3000, 3000000, wall, 20.0F);
 
@@ -463,9 +512,7 @@ void test_scheduler_has_priority_over_hub_when_enabled() {
     TEST_ASSERT_TRUE(scheduler.addEntry(500, Command::OFF));
     TEST_ASSERT_TRUE(hub.pushMockCommand(Command::ON));
 
-    WallClockSnapshot wall = makeWall(20260223, 2, 7, 0, 3, true);
-    wall.bootMs = 500;
-    wall.bootUs = 500000;
+    WallClockSnapshot wall = hostLocalWithSecondOffset(500, 500000, 3);
 
     controller.tick(500, 500000, wall, 20.0F);
 
@@ -489,9 +536,7 @@ void test_hub_temp_up_changes_target_without_transmit_when_power_off() {
     const float initialTarget = controller.healthSnapshot().targetTemperatureC;
     TEST_ASSERT_TRUE(hub.pushMockCommand(Command::TEMP_UP));
 
-    WallClockSnapshot wall = makeWall(20260223, 2, 7, 0, 4, true);
-    wall.bootMs = 600;
-    wall.bootUs = 600000;
+    WallClockSnapshot wall = hostLocalWithSecondOffset(600, 600000, 4);
 
     controller.tick(600, 600000, wall, 20.0F);
 
@@ -522,10 +567,22 @@ void test_retrofit_timeout_retries_then_drops_pending_command() {
     controller.retryCount_ = 0;
     controller.powerEnabled_ = true;
 
+    const WallClockSnapshot baseWall = hostLocalWithSecondOffset(1000, 1000000, 0);
     auto tickTimeout = [&](uint32_t nowMs) {
-        WallClockSnapshot wall = makeWall(20260223, 2, 7, 0, 5, true);
+        const uint32_t offsetSec = nowMs / 1000U;
+        uint8_t hour = baseWall.hour;
+        uint8_t minute = baseWall.minute;
+        uint8_t second = baseWall.second;
+        secondsToHms(baseWall.secondsOfDay + offsetSec, hour, minute, second);
+
+        WallClockSnapshot wall = baseWall;
         wall.bootMs = nowMs;
         wall.bootUs = nowMs * 1000U;
+        wall.hour = hour;
+        wall.minute = minute;
+        wall.second = second;
+        wall.secondsOfDay =
+            (static_cast<uint32_t>(wall.hour) * 3600UL) + (static_cast<uint32_t>(wall.minute) * 60UL) + wall.second;
         controller.tick(nowMs, wall.bootUs, wall, 20.0F);
     };
 
@@ -538,13 +595,23 @@ void test_retrofit_timeout_retries_then_drops_pending_command() {
     TEST_ASSERT_EQUAL(Command::NONE, after.pendingCommand);
     TEST_ASSERT_EQUAL_UINT8(0, after.retryCount);
 
-    TEST_ASSERT_TRUE(logger.size() >= 3);
+    TEST_ASSERT_EQUAL_UINT32(3, logger.size());
     const LogEntry& firstRetry = logger.entries()[0];
     const LogEntry& secondRetry = logger.entries()[1];
     const LogEntry& drop = logger.entries()[2];
     TEST_ASSERT_EQUAL(LogEventType::TRANSMIT_FAILED, firstRetry.type);
     TEST_ASSERT_EQUAL(LogEventType::TRANSMIT_FAILED, secondRetry.type);
     TEST_ASSERT_EQUAL(LogEventType::COMMAND_DROPPED, drop.type);
+
+    // Cooldown prevents an immediate thermostat resend after drop.
+    tickTimeout(2000);
+    TEST_ASSERT_EQUAL_UINT32(3, logger.size());
+
+    // After cooldown expiry, thermostat can re-attempt.
+    tickTimeout(2500);
+    TEST_ASSERT_EQUAL_UINT32(5, logger.size());
+    TEST_ASSERT_EQUAL(LogEventType::THERMOSTAT_CONTROL, logger.entries()[3].type);
+    TEST_ASSERT_EQUAL(LogEventType::TRANSMIT_FAILED, logger.entries()[4].type);
 }
 
 }  // namespace

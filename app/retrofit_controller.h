@@ -60,4 +60,5 @@ private:
     bool heaterCommandedOn_ = false;
     float targetTemperatureC_ = 22.0F;
     TxFailureCode lastTxFailure_ = TxFailureCode::NONE;
+    uint32_t thermostatSuppressedUntilMs_ = 0;
 };

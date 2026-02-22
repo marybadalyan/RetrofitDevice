@@ -42,18 +42,24 @@ void loop() {
     const WallClockSnapshot wallNow = gWallClock.now(nowMs, nowUs);
 
     DecodedFrame frame{};
-    if (gIrReceiver.poll(frame) && !frame.isAck) {
-        const bool applied = gHeater.applyCommand(frame.command);
-        gLogger.log(wallNow, LogEventType::STATE_CHANGE, frame.command, applied);
-        if (applied) {
-            // Heater acknowledges command execution back to retrofit device.
-            const TxFailureCode txResult = gIrSender.sendAck(frame.command);
-            if (txResult != TxFailureCode::NONE) {
-                gLogger.log(wallNow,
-                            LogEventType::TRANSMIT_FAILED,
-                            frame.command,
-                            false,
-                            static_cast<uint8_t>(txResult));
+    if (gIrReceiver.poll(frame)) {
+        gLogger.log(wallNow, LogEventType::IR_FRAME_RX, frame.command, true, frame.isAck ? 1U : 0U);
+
+        if (!frame.isAck) {
+            const bool applied = gHeater.applyCommand(frame.command);
+            gLogger.log(wallNow, LogEventType::STATE_CHANGE, frame.command, applied);
+            if (applied) {
+                // Heater acknowledges command execution back to retrofit device.
+                const TxFailureCode txResult = gIrSender.sendAck(frame.command);
+                if (txResult == TxFailureCode::NONE) {
+                    gLogger.log(wallNow, LogEventType::ACK_SENT, frame.command, true);
+                } else {
+                    gLogger.log(wallNow,
+                                LogEventType::TRANSMIT_FAILED,
+                                frame.command,
+                                false,
+                                static_cast<uint8_t>(txResult));
+                }
             }
         }
     }

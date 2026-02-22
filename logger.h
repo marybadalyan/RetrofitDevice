@@ -15,7 +15,9 @@ enum class LogEventType : uint8_t {
     SCHEDULE_COMMAND = 4,
     STATE_CHANGE = 5,
     THERMOSTAT_CONTROL = 6,
-    TRANSMIT_FAILED = 7
+    TRANSMIT_FAILED = 7,
+    IR_FRAME_RX = 8,
+    ACK_SENT = 9
 };
 
 struct LogEntry {

@@ -137,6 +137,9 @@ void RetrofitController::runThermostatLoop(const WallClockSnapshot& wallNow, flo
     if (pendingStatus_ != PendingStatus::IDLE) {
         return;
     }
+    if (static_cast<int32_t>(wallNow.bootMs - thermostatSuppressedUntilMs_) < 0) {
+        return;
+    }
 
     const bool demandHeat = shouldHeat(roomTemperatureC);
     if (demandHeat == heaterCommandedOn_) {
@@ -239,6 +242,7 @@ void RetrofitController::handlePendingTimeout(const WallClockSnapshot& wallNow) 
     }
 
     logger_.log(wallNow, LogEventType::COMMAND_DROPPED, pendingCommand_, false);
+    thermostatSuppressedUntilMs_ = wallNow.bootMs + kPostDropCooldownMs;
     pendingStatus_ = PendingStatus::IDLE;
     retryCount_ = 0;
     pendingCommand_ = Command::NONE;

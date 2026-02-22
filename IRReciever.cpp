@@ -5,8 +5,11 @@
 
 #if __has_include(<Arduino.h>)
 #include <Arduino.h>
+#define IR_RX_HAS_ARDUINO 1
 #else
+#include <cstdio>
 #include <cstdint>
+#define IR_RX_HAS_ARDUINO 0
 static inline uint32_t micros() { return 0; }
 static inline void pinMode(int, int) {}
 static inline int digitalPinToInterrupt(int pin) { return pin; }
@@ -138,6 +141,20 @@ bool IRReceiver::poll(DecodedFrame& outFrame) {
 
     if (!decodeFrame(outFrame, localPulses, count)) {
         return false;
+    }
+
+    if (kDiagnosticsLogLevel >= 2U) {
+#if IR_RX_HAS_ARDUINO
+        Serial.print("[IR-RX] decoded cmd=");
+        Serial.print(commandToString(outFrame.command));
+        Serial.print(" ack=");
+        Serial.println(outFrame.isAck ? "1" : "0");
+#else
+        std::printf("[IR-RX] decoded cmd=%s ack=%u\n",
+                    commandToString(outFrame.command),
+                    static_cast<unsigned>(outFrame.isAck ? 1U : 0U));
+        std::fflush(stdout);
+#endif
     }
 
     noInterrupts();

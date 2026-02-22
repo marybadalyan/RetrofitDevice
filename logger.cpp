@@ -2,7 +2,13 @@
 
 #if __has_include(<Arduino.h>)
 #include <Arduino.h>
+#define LOGGER_HAS_ARDUINO 1
+#else
+#include <cstdio>
+#define LOGGER_HAS_ARDUINO 0
 #endif
+
+#include "prefferences.h"
 
 #if __has_include(<Preferences.h>)
 #include <Preferences.h>
@@ -26,6 +32,93 @@ Preferences& prefs() {
     return instance;
 }
 #endif
+
+const char* eventToString(LogEventType type) {
+    switch (type) {
+        case LogEventType::COMMAND_SENT:
+            return "COMMAND_SENT";
+        case LogEventType::ACK_RECEIVED:
+            return "ACK_RECEIVED";
+        case LogEventType::COMMAND_DROPPED:
+            return "COMMAND_DROPPED";
+        case LogEventType::HUB_COMMAND_RX:
+            return "HUB_COMMAND_RX";
+        case LogEventType::SCHEDULE_COMMAND:
+            return "SCHEDULE_COMMAND";
+        case LogEventType::STATE_CHANGE:
+            return "STATE_CHANGE";
+        case LogEventType::THERMOSTAT_CONTROL:
+            return "THERMOSTAT_CONTROL";
+        case LogEventType::TRANSMIT_FAILED:
+            return "TRANSMIT_FAILED";
+        case LogEventType::IR_FRAME_RX:
+            return "IR_FRAME_RX";
+        case LogEventType::ACK_SENT:
+            return "ACK_SENT";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+void printLogEntry(const LogEntry& entry) {
+    if (kDiagnosticsLogLevel < 2U) {
+        return;
+    }
+
+#if LOGGER_HAS_ARDUINO
+    Serial.print("[LOG] ");
+    if (entry.wallTimeValid) {
+        Serial.print(entry.dateKey);
+        Serial.print(' ');
+        if (entry.hour < 10U) {
+            Serial.print('0');
+        }
+        Serial.print(entry.hour);
+        Serial.print(':');
+        if (entry.minute < 10U) {
+            Serial.print('0');
+        }
+        Serial.print(entry.minute);
+        Serial.print(':');
+        if (entry.second < 10U) {
+            Serial.print('0');
+        }
+        Serial.print(entry.second);
+    } else {
+        Serial.print("bootMs=");
+        Serial.print(entry.uptimeMs);
+    }
+
+    Serial.print(" evt=");
+    Serial.print(eventToString(entry.type));
+    Serial.print(" cmd=");
+    Serial.print(commandToString(entry.command));
+    Serial.print(" success=");
+    Serial.print(entry.success ? "1" : "0");
+    Serial.print(" code=");
+    Serial.println(entry.detailCode);
+#else
+    if (entry.wallTimeValid) {
+        std::printf("[LOG] %u %02u:%02u:%02u evt=%s cmd=%s success=%u code=%u\n",
+                    static_cast<unsigned>(entry.dateKey),
+                    static_cast<unsigned>(entry.hour),
+                    static_cast<unsigned>(entry.minute),
+                    static_cast<unsigned>(entry.second),
+                    eventToString(entry.type),
+                    commandToString(entry.command),
+                    static_cast<unsigned>(entry.success ? 1U : 0U),
+                    static_cast<unsigned>(entry.detailCode));
+    } else {
+        std::printf("[LOG] bootMs=%u evt=%s cmd=%s success=%u code=%u\n",
+                    static_cast<unsigned>(entry.uptimeMs),
+                    eventToString(entry.type),
+                    commandToString(entry.command),
+                    static_cast<unsigned>(entry.success ? 1U : 0U),
+                    static_cast<unsigned>(entry.detailCode));
+    }
+    std::fflush(stdout);
+#endif
+}
 }  // namespace
 
 void Logger::log(const WallClockSnapshot& timestamp,
@@ -53,6 +146,8 @@ void Logger::log(const WallClockSnapshot& timestamp,
     if (size_ < entries_.size()) {
         ++size_;
     }
+
+    printLogEntry(entries_[(nextIndex_ + entries_.size() - 1U) % entries_.size()]);
 
     persistState();
 }
