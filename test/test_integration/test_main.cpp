@@ -189,6 +189,45 @@ void test_integration_retries_then_drops_when_no_ack_received() {
     TEST_ASSERT_TRUE(sawDrop);
 }
 
+void test_integration_hub_overrides_scheduler_for_current_tick() {
+    IRSender sender;
+    sender.begin();
+    forceSenderReady(sender);
+
+    IRReceiver receiver;
+    receiver.begin();
+
+    HubReceiver hub;
+    CommandScheduler scheduler;
+    Logger logger;
+    RetrofitController retrofit(sender, receiver, hub, scheduler, logger);
+    retrofit.begin(true);
+
+    TEST_ASSERT_TRUE(scheduler.addEntry(500, Command::OFF));
+    TEST_ASSERT_TRUE(hub.pushMockCommand(Command::ON));
+
+    WallClockSnapshot wall = makeWall(20260223, 1, 6, 30, 0, 500, 500000);
+    retrofit.tick(500, 500000, wall, 20.0F);
+
+    TEST_ASSERT_TRUE(logger.size() >= 1);
+    TEST_ASSERT_EQUAL(LogEventType::HUB_COMMAND_RX, logger.entries()[0].type);
+    TEST_ASSERT_EQUAL(Command::ON, logger.entries()[0].command);
+
+    wall.bootMs = 520;
+    wall.bootUs = 520000;
+    retrofit.tick(520, 520000, wall, 20.0F);
+
+    bool sawScheduleAfterHub = false;
+    for (size_t i = 1; i < logger.size(); ++i) {
+        if (logger.entries()[i].type == LogEventType::SCHEDULE_COMMAND &&
+            logger.entries()[i].command == Command::OFF) {
+            sawScheduleAfterHub = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(sawScheduleAfterHub);
+}
+
 }  // namespace
 
 void setUp() {}
@@ -200,6 +239,7 @@ int main(int, char**) {
     RUN_TEST(test_integration_hub_on_roundtrip_ack_updates_state);
     RUN_TEST(test_integration_thermostat_turns_off_and_heater_applies_off);
     RUN_TEST(test_integration_retries_then_drops_when_no_ack_received);
+    RUN_TEST(test_integration_hub_overrides_scheduler_for_current_tick);
 
     return UNITY_END();
 }

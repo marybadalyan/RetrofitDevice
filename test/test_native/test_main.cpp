@@ -498,7 +498,7 @@ void test_retrofit_logs_ack_received_for_pending_command() {
     TEST_ASSERT_TRUE(controller.heaterCommandedOn_);
 }
 
-void test_scheduler_has_priority_over_hub_when_enabled() {
+void test_hub_has_priority_over_scheduler_when_both_ready() {
     IRSender sender;
     sender.begin();
     IRReceiver receiver;
@@ -517,9 +517,23 @@ void test_scheduler_has_priority_over_hub_when_enabled() {
     controller.tick(500, 500000, wall, 20.0F);
 
     TEST_ASSERT_TRUE(logger.size() >= 1);
-    const LogEntry& first = logger.entries()[0];
-    TEST_ASSERT_EQUAL(LogEventType::SCHEDULE_COMMAND, first.type);
-    TEST_ASSERT_EQUAL(Command::OFF, first.command);
+    TEST_ASSERT_EQUAL(LogEventType::HUB_COMMAND_RX, logger.entries()[0].type);
+    TEST_ASSERT_EQUAL(Command::ON, logger.entries()[0].command);
+
+    // Next tick should still execute pending due schedule command.
+    wall.bootMs = 520;
+    wall.bootUs = 520000;
+    controller.tick(520, 520000, wall, 20.0F);
+
+    bool sawScheduleAfterHub = false;
+    for (size_t i = 1; i < logger.size(); ++i) {
+        if (logger.entries()[i].type == LogEventType::SCHEDULE_COMMAND &&
+            logger.entries()[i].command == Command::OFF) {
+            sawScheduleAfterHub = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(sawScheduleAfterHub);
 }
 
 void test_hub_temp_up_changes_target_without_transmit_when_power_off() {
@@ -636,7 +650,7 @@ int main(int, char**) {
     RUN_TEST(test_retrofit_logs_command_then_tx_failure_in_native);
     RUN_TEST(test_heater_logs_received_command_and_apply_result);
     RUN_TEST(test_retrofit_logs_ack_received_for_pending_command);
-    RUN_TEST(test_scheduler_has_priority_over_hub_when_enabled);
+    RUN_TEST(test_hub_has_priority_over_scheduler_when_both_ready);
     RUN_TEST(test_hub_temp_up_changes_target_without_transmit_when_power_off);
     RUN_TEST(test_retrofit_timeout_retries_then_drops_pending_command);
 

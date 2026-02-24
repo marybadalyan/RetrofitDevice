@@ -85,17 +85,18 @@ bool RetrofitController::chooseNextCommand(uint32_t nowMs,
                                            const WallClockSnapshot& wallNow,
                                            Command& outCommand,
                                            LogEventType& sourceType) {
+    // Hub command has immediate priority for this tick; scheduled command remains pending for later ticks.
+    if (hubReceiver_.poll(outCommand)) {
+        sourceType = LogEventType::HUB_COMMAND_RX;
+        return true;
+    }
+
     if (scheduler_.enabled()) {
         if (scheduler_.nextDueCommand(nowMs, wallNow, outCommand)) {
             sourceType = LogEventType::SCHEDULE_COMMAND;
             return true;
         }
         return false;
-    }
-
-    if (hubReceiver_.poll(outCommand)) {
-        sourceType = LogEventType::HUB_COMMAND_RX;
-        return true;
     }
     return false;
 }

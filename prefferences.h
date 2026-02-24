@@ -2,8 +2,8 @@
 
 #include <cstdint>
 
-constexpr int kIrTxPin = 4;
-constexpr int kIrRxPin = 15;
+constexpr int kIrTxPin = 4; // tx transmit
+constexpr int kIrRxPin = 15; // rx recieve 
 constexpr int kRelayPin = 5;
 constexpr uint8_t kIrPwmChannel = 0;
 constexpr uint32_t kIrCarrierFreqHz = 38000;
@@ -23,7 +23,7 @@ constexpr bool kUseRelayOutput = true;
 constexpr uint8_t kDiagnosticsLogLevel = 2;
 constexpr uint32_t kHealthSnapshotIntervalMs = 10000;
 
-// Retrofit Wi-Fi + hub cloud settings.
+// Retrofit Wi-Fi + hub cloud settings.w
 constexpr const char* kWifiSsid = "";
 constexpr const char* kWifiPassword = "";
 constexpr bool kEnableIpTimezoneLookup = true;
