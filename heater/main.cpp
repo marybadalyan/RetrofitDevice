@@ -1,5 +1,4 @@
 #include "../IRReciever.h"
-#include "../IRSender.h"
 #include "../logger.h"
 #include "../prefferences.h"
 #include "../time/wall_clock.h"
@@ -15,12 +14,12 @@ static inline uint32_t micros() { return 0; }
 
 namespace {
 IRReceiver gIrReceiver;
-IRSender gIrSender;
 Logger gLogger;
 WallClock gWallClock;
 Heater gHeater;
 RelayDriver gRelay;
 DisplayDriver gDisplay;
+CommandStatusLed gCommandStatusLed;
 }  // namespace
 
 void setup() {
@@ -28,9 +27,9 @@ void setup() {
     Serial.begin(115200);
 #endif
     gIrReceiver.begin();
-    gIrSender.begin();
     gRelay.begin();
     gDisplay.begin();
+    gCommandStatusLed.begin();
 
     gLogger.beginPersistence("heater-log");
     gWallClock.beginNtp(kNtpTimezone, kNtpServerPrimary, kNtpServerSecondary, kNtpServerTertiary);
@@ -49,17 +48,7 @@ void loop() {
             const bool applied = gHeater.applyCommand(frame.command);
             gLogger.log(wallNow, LogEventType::STATE_CHANGE, frame.command, applied);
             if (applied) {
-                // Heater acknowledges command execution back to retrofit device.
-                const TxFailureCode txResult = gIrSender.sendAck(frame.command);
-                if (txResult == TxFailureCode::NONE) {
-                    gLogger.log(wallNow, LogEventType::ACK_SENT, frame.command, true);
-                } else {
-                    gLogger.log(wallNow,
-                                LogEventType::TRANSMIT_FAILED,
-                                frame.command,
-                                false,
-                                static_cast<uint8_t>(txResult));
-                }
+                gCommandStatusLed.showCommand(frame.command);
             }
         }
     }

@@ -22,6 +22,9 @@ bool Heater::applyCommand(Command command) {
         case Command::OFF:
             powerEnabled_ = false;
             return true;
+        case Command::TEMP_UP:
+        case Command::TEMP_DOWN:
+            return true;
         default:
             return false;
     }
@@ -66,4 +69,48 @@ void DisplayDriver::showPowerState(bool isPowerEnabled) {
 #else
     (void)isPowerEnabled;
 #endif
+}
+
+void CommandStatusLed::begin() {
+#if __has_include(<Arduino.h>)
+    if (!kStatusLedEnabled) {
+        return;
+    }
+#endif
+    pinMode(kStatusLedRedPin, OUTPUT);
+    pinMode(kStatusLedGreenPin, OUTPUT);
+    pinMode(kStatusLedBluePin, OUTPUT);
+    setColor(false, false, false);
+}
+
+void CommandStatusLed::showCommand(Command command) {
+#if __has_include(<Arduino.h>)
+    if (!kStatusLedEnabled) {
+        return;
+    }
+#endif
+
+    switch (command) {
+        case Command::ON:
+            setColor(false, true, false);   // Green
+            break;
+        case Command::OFF:
+            setColor(true, false, false);   // Red
+            break;
+        case Command::TEMP_UP:
+            setColor(false, false, true);   // Blue
+            break;
+        case Command::TEMP_DOWN:
+            setColor(true, true, false);    // Yellow
+            break;
+        default:
+            setColor(false, false, false);  // Off for unknown commands
+            break;
+    }
+}
+
+void CommandStatusLed::setColor(bool redOn, bool greenOn, bool blueOn) {
+    digitalWrite(kStatusLedRedPin, redOn ? HIGH : LOW);
+    digitalWrite(kStatusLedGreenPin, greenOn ? HIGH : LOW);
+    digitalWrite(kStatusLedBluePin, blueOn ? HIGH : LOW);
 }

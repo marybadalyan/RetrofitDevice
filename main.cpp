@@ -99,12 +99,6 @@ void printHealthSnapshot(uint32_t nowMs, const WallClockSnapshot& wallNow, float
     Serial.print("heater_commanded_on=");
     Serial.println(health.heaterCommandedOn ? "true" : "false");
 
-    Serial.print("pending_ack=");
-    Serial.println(health.waitingAck ? "true" : "false");
-    Serial.print("retry_count=");
-    Serial.println(health.retryCount);
-    Serial.print("pending_cmd=");
-    Serial.println(commandToString(health.pendingCommand));
     Serial.print("last_tx_failure_code=");
     Serial.println(static_cast<uint8_t>(health.lastTxFailure));
 #else
@@ -145,7 +139,7 @@ void loop() {
                            gHubReceiver,
                            (!gHubConnectivity.wifiConnected()) && kEnableHubMockScheduler);
 
-    // Scheduler/hub arbitration + ACK handling live in controller.
+    // Scheduler/hub arbitration and heater control loop live in controller.
     gController.tick(nowMs, nowUs, wallNow, roomTemperatureC);
     printHealthSnapshot(nowMs, wallNow, roomTemperatureC);
 }

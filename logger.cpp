@@ -11,8 +11,9 @@
 #include "prefferences.h"
 
 #if __has_include(<Preferences.h>)
-#include <Preferences.h>
-#define LOGGER_HAS_PREFERENCES 1
+#include <Preferences.h>                // lets you store data in flash memory
+#define LOGGER_HAS_PREFERENCES 1         // is a wrapper over flash storage
+                                        // key-value database
 #else
 #define LOGGER_HAS_PREFERENCES 0
 #endif
@@ -20,6 +21,8 @@
 namespace {
 constexpr uint16_t kPersistenceVersion = 2;
 
+// metadata header 
+// makes sure that after reboot well know the version the next index and size 
 struct LoggerPersistentHeader {
     uint16_t version = kPersistenceVersion;
     uint16_t nextIndex = 0;
@@ -185,7 +188,7 @@ bool Logger::beginPersistence(const char* storageNamespace) {
     return false;
 #endif
 }
-
+// updates header and the entries in flash.
 void Logger::persistState() {
 #if LOGGER_HAS_PREFERENCES
     if (!persistenceReady_) {

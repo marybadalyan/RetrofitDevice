@@ -11,20 +11,20 @@ enum class LogEventType : uint8_t {
     COMMAND_SENT = 0,
     ACK_RECEIVED = 1,
     COMMAND_DROPPED = 2,
-    HUB_COMMAND_RX = 3,
+    HUB_COMMAND_RX = 3, // command rescieved from hub 
     SCHEDULE_COMMAND = 4,
     STATE_CHANGE = 5,
     THERMOSTAT_CONTROL = 6,
     TRANSMIT_FAILED = 7,
-    IR_FRAME_RX = 8,
+    IR_FRAME_RX = 8, // raw IR frame received from hardware 
     ACK_SENT = 9
 };
 
 struct LogEntry {
-    uint32_t uptimeMs;
+    uint32_t uptimeMs; // milliseconds since device boot
     uint32_t uptimeUs;
-    uint64_t unixMs;
-    uint32_t dateKey;
+    uint64_t unixMs; // Unix epoch timestamp in milliseconds 
+    uint32_t dateKey; //  calendar date as YYYYMMDD
     uint8_t hour;
     uint8_t minute;
     uint8_t second;
@@ -33,7 +33,7 @@ struct LogEntry {
     LogEventType type;
     Command command;
     bool success;
-    uint8_t detailCode;
+    uint8_t detailCode; //  extra status/error code
 };
 
 class Logger {
@@ -53,6 +53,7 @@ public:
 private:
     void persistState();
 
+    // for RAM
     std::array<LogEntry, kCapacity> entries_{};
     size_t nextIndex_ = 0;
     size_t size_ = 0;

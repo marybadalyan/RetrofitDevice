@@ -24,3 +24,12 @@ public:
     void begin();
     void showPowerState(bool isPowerEnabled);
 };
+
+class CommandStatusLed {
+public:
+    void begin();
+    void showCommand(Command command);
+
+private:
+    void setColor(bool redOn, bool greenOn, bool blueOn);
+};

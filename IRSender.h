@@ -6,9 +6,9 @@
 
 enum class TxFailureCode : uint8_t {
     NONE = 0,
-    NOT_INITIALIZED = 1,
+    NOT_INITIALIZED = 1, // before begin() 
     INVALID_COMMAND = 2,
-    INVALID_CONFIG = 3,
+    INVALID_CONFIG = 3, // means runtime config values needed for TX are invalid
     HW_UNAVAILABLE = 4
 };
 
