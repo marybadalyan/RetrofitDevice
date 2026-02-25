@@ -65,13 +65,13 @@ void IRSender::sendBit(bool bit) {
 }
 
 void IRSender::sendByte(uint8_t data) {
-    for (int bit = 7; bit >= 0; --bit) {
+    // NEC transmits each byte LSB-first.
+    for (int bit = 0; bit < 8; ++bit) {
         sendBit((data & (1U << bit)) != 0U);
     }
 }
 
-TxFailureCode IRSender::sendFrame(uint8_t commandByte) {
-    (void)commandByte;
+TxFailureCode IRSender::sendFrame(Command command, bool isAck) {
     if (!hardwareAvailable_) {
         return TxFailureCode::HW_UNAVAILABLE;
     }
@@ -84,14 +84,19 @@ TxFailureCode IRSender::sendFrame(uint8_t commandByte) {
         return TxFailureCode::INVALID_CONFIG;
     }
 
-    // Frame: header mark/space + header(2 bytes) + command(1) + checksum(1).
+    const protocol::Packet packet = isAck ? protocol::makeAck(command) : protocol::makePacket(command);
+    if (!protocol::parsePacket(packet, command, isAck)) {
+        return TxFailureCode::INVALID_COMMAND;
+    }
+
+    // NEC frame: 9ms mark + 4.5ms space + address + ~address + command + ~command.
     mark(9000);
     space(4500);
 
-    sendByte(static_cast<uint8_t>(protocol::kHeader >> 8));
-    sendByte(static_cast<uint8_t>(protocol::kHeader & 0xFFU));
-    sendByte(commandByte);
-    sendByte(protocol::checksum(commandByte));
+    sendByte(packet.address);
+    sendByte(packet.addressInverse);
+    sendByte(packet.command);
+    sendByte(packet.commandInverse);
 
     mark(560);
     space(560);
@@ -102,12 +107,12 @@ TxFailureCode IRSender::sendCommand(Command command) {
     if (!isValidCommand(command)) {
         return TxFailureCode::INVALID_COMMAND;
     }
-    return sendFrame(static_cast<uint8_t>(command));
+    return sendFrame(command, false);
 }
 
 TxFailureCode IRSender::sendAck(Command command) {
     if (!isValidCommand(command)) {
         return TxFailureCode::INVALID_COMMAND;
     }
-    return sendFrame(static_cast<uint8_t>(static_cast<uint8_t>(command) | 0x80U));
+    return sendFrame(command, true);
 }

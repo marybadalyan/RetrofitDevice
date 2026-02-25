@@ -23,7 +23,7 @@ private:
     void space(uint32_t timeMicros);
     void sendBit(bool bit);
     void sendByte(uint8_t data);
-    TxFailureCode sendFrame(uint8_t commandByte);
+    TxFailureCode sendFrame(Command command, bool isAck);
     bool hardwareAvailable_ = true;
     bool initialized_ = false;
 };

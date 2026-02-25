@@ -12,6 +12,15 @@ constexpr bool kStatusLedEnabled = true;
 constexpr uint8_t kIrPwmChannel = 0;
 constexpr uint32_t kIrCarrierFreqHz = 38000;
 constexpr uint8_t kIrPwmResolutionBits = 8;
+constexpr uint16_t kNecDeviceAddress = 0x00FF;
+constexpr uint8_t kNecCommandOn = 0x01;
+constexpr uint8_t kNecCommandOff = 0x02;
+constexpr uint8_t kNecCommandTempUp = 0x03;
+constexpr uint8_t kNecCommandTempDown = 0x04;
+constexpr uint8_t kNecAckOn = 0x81;
+constexpr uint8_t kNecAckOff = 0x82;
+constexpr uint8_t kNecAckTempUp = 0x83;
+constexpr uint8_t kNecAckTempDown = 0x84;
 
 constexpr bool kSchedulerEnabled = true;
 constexpr float kDefaultTargetTemperatureC = 22.0F;
