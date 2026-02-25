@@ -6,7 +6,6 @@
 #include "app/retrofit_controller.h"
 #undef private
 
-#include "heater/heater.h"
 #include "hub/hub_receiver.h"
 #include "logger.h"
 #include "scheduler/scheduler.h"
@@ -53,16 +52,21 @@ void test_integration_hub_on_updates_state_without_ack() {
     RetrofitController retrofit(sender, receiver, hub, scheduler, logger);
     retrofit.begin(false);
 
-    Heater heater;
-
     TEST_ASSERT_TRUE(hub.pushMockCommand(Command::ON));
 
     WallClockSnapshot wall = makeWall(20260223, 1, 6, 0, 0, 1000, 1000000);
     retrofit.tick(1000, 1000000, wall, 20.0F);
 
-    TEST_ASSERT_TRUE(retrofit.heaterCommandedOn_);
-    TEST_ASSERT_TRUE(heater.applyCommand(Command::ON));
-    TEST_ASSERT_TRUE(heater.powerEnabled());
+    TEST_ASSERT_TRUE(retrofit.powerEnabled_);
+    bool sawTempUp = false;
+    for (size_t i = 0; i < logger.size(); ++i) {
+        if (logger.entries()[i].type == LogEventType::THERMOSTAT_CONTROL &&
+            logger.entries()[i].command == Command::TEMP_UP) {
+            sawTempUp = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(sawTempUp);
 }
 
 void test_integration_thermostat_turns_off_and_heater_applies_off() {
@@ -79,19 +83,21 @@ void test_integration_thermostat_turns_off_and_heater_applies_off() {
     RetrofitController retrofit(sender, receiver, hub, scheduler, logger);
     retrofit.begin(false);
 
-    Heater heater;
-    TEST_ASSERT_TRUE(heater.applyCommand(Command::ON));
-
     retrofit.powerEnabled_ = true;
-    retrofit.heaterCommandedOn_ = true;
     retrofit.targetTemperatureC_ = 22.0F;
 
     WallClockSnapshot wall = makeWall(20260223, 1, 6, 10, 0, 2000, 2000000);
     retrofit.tick(2000, 2000000, wall, 24.0F);
 
-    TEST_ASSERT_TRUE(heater.applyCommand(Command::OFF));
-    TEST_ASSERT_FALSE(heater.powerEnabled());
-    TEST_ASSERT_FALSE(retrofit.heaterCommandedOn_);
+    bool sawTempDown = false;
+    for (size_t i = 0; i < logger.size(); ++i) {
+        if (logger.entries()[i].type == LogEventType::THERMOSTAT_CONTROL &&
+            logger.entries()[i].command == Command::TEMP_DOWN) {
+            sawTempDown = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(sawTempDown);
 }
 
 void test_integration_no_command_drop_without_ack_logic() {

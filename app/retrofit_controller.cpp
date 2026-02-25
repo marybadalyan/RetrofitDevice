@@ -39,8 +39,18 @@ RetrofitController::HealthSnapshot RetrofitController::healthSnapshot() const {
     snapshot.powerEnabled = powerEnabled_;
     snapshot.heaterCommandedOn = heaterCommandedOn_;
     snapshot.targetTemperatureC = targetTemperatureC_;
+    snapshot.mode = pidController_.mode();
     snapshot.lastTxFailure = lastTxFailure_;
     return snapshot;
+}
+
+void RetrofitController::setThermostatMode(ThermostatMode mode) {
+    pidController_.setMode(mode);
+    pidController_.clearRuntimeOverrides();
+}
+
+ThermostatMode RetrofitController::thermostatMode() const {
+    return pidController_.mode();
 }
 
 void RetrofitController::tick(uint32_t nowMs,
@@ -56,7 +66,7 @@ void RetrofitController::tick(uint32_t nowMs,
         logger_.log(wallNow, sourceType, next, applied);
     }
 
-    runThermostatLoop(wallNow, roomTemperatureC);
+    runThermostatLoop(nowMs, wallNow, roomTemperatureC);
 }
 
 bool RetrofitController::chooseNextCommand(uint32_t nowMs,
@@ -98,27 +108,41 @@ bool RetrofitController::applyThermostatControlCommand(Command command) {
     }
 }
 
-bool RetrofitController::shouldHeat(float roomTemperatureC) const {
+void RetrofitController::runThermostatLoop(uint32_t nowMs,
+                                            const WallClockSnapshot& wallNow,
+                                            float roomTemperatureC) {
     if (!powerEnabled_) {
-        return false;
-    }
-
-    const float lowerBoundC = targetTemperatureC_ - kThermostatHysteresisC;
-    const float upperBoundC = targetTemperatureC_ + kThermostatHysteresisC;
-
-    if (heaterCommandedOn_) {
-        return roomTemperatureC < upperBoundC;
-    }
-    return roomTemperatureC <= lowerBoundC;
-}
-
-void RetrofitController::runThermostatLoop(const WallClockSnapshot& wallNow, float roomTemperatureC) {
-    const bool demandHeat = shouldHeat(roomTemperatureC);
-    if (demandHeat == heaterCommandedOn_) {
+        pidController_.reset(roomTemperatureC);
+        pidController_.clearRuntimeOverrides();
+        adaptiveTuning_.reset(nowMs, roomTemperatureC);
         return;
     }
 
-    sendCommand(demandHeat ? Command::ON : Command::OFF, wallNow, LogEventType::THERMOSTAT_CONTROL);
+    const ThermostatMode currentMode = pidController_.mode();
+    const ThermostatTuning baseTuning = pidController_.baseTuningForMode(currentMode);
+    const AdaptiveThermostatTuning::Overrides adaptiveOverrides =
+        adaptiveTuning_.update(nowMs, roomTemperatureC, currentMode, baseTuning);
+
+    PidThermostatController::RuntimeOverrides runtimeOverrides{};
+    runtimeOverrides.enabled = true;
+    runtimeOverrides.kp = adaptiveOverrides.kp;
+    runtimeOverrides.maxSteps = adaptiveOverrides.maxSteps;
+    pidController_.setRuntimeOverrides(runtimeOverrides);
+
+    const PidThermostatController::Result pidResult = pidController_.tick(nowMs, targetTemperatureC_, roomTemperatureC);
+    if (!pidResult.ranControlCycle || pidResult.steps == 0) {
+        return;
+    }
+
+    const Command stepCommand = (pidResult.steps > 0) ? Command::TEMP_UP : Command::TEMP_DOWN;
+    const int8_t stepCount = static_cast<int8_t>((pidResult.steps > 0) ? pidResult.steps : -pidResult.steps);
+    if (pidResult.steps > 0) {
+        adaptiveTuning_.onHeatingStepsSent(nowMs, roomTemperatureC, stepCount);
+    }
+
+    for (int8_t i = 0; i < stepCount; ++i) {
+        sendCommand(stepCommand, wallNow, LogEventType::THERMOSTAT_CONTROL);
+    }
 }
 
 void RetrofitController::sendCommand(Command command, const WallClockSnapshot& wallNow, LogEventType sourceType) {

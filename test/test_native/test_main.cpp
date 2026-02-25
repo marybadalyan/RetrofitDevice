@@ -383,23 +383,30 @@ void test_retrofit_logs_command_then_tx_failure_in_native() {
 
     controller.tick(1000, 1000000, wall, 20.0F);
 
-    TEST_ASSERT_EQUAL_UINT32(3, logger.size());
+    TEST_ASSERT_EQUAL_UINT32(7, logger.size());
     const LogEntry& source = logger.entries()[0];
-    const LogEntry& thermostat = logger.entries()[1];
-    const LogEntry& txFail = logger.entries()[2];
 
     TEST_ASSERT_EQUAL(LogEventType::HUB_COMMAND_RX, source.type);
     TEST_ASSERT_EQUAL(Command::ON, source.command);
     TEST_ASSERT_TRUE(source.success);
 
-    TEST_ASSERT_EQUAL(LogEventType::THERMOSTAT_CONTROL, thermostat.type);
-    TEST_ASSERT_EQUAL(Command::ON, thermostat.command);
-    TEST_ASSERT_TRUE(thermostat.success);
-
-    TEST_ASSERT_EQUAL(LogEventType::TRANSMIT_FAILED, txFail.type);
-    TEST_ASSERT_EQUAL(Command::ON, txFail.command);
-    TEST_ASSERT_FALSE(txFail.success);
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(TxFailureCode::HW_UNAVAILABLE), txFail.detailCode);
+    uint32_t thermostatControlCount = 0;
+    uint32_t txFailCount = 0;
+    for (size_t i = 1; i < logger.size(); ++i) {
+        const LogEntry& entry = logger.entries()[i];
+        if (entry.type == LogEventType::THERMOSTAT_CONTROL) {
+            ++thermostatControlCount;
+            TEST_ASSERT_EQUAL(Command::TEMP_UP, entry.command);
+            TEST_ASSERT_TRUE(entry.success);
+        } else if (entry.type == LogEventType::TRANSMIT_FAILED) {
+            ++txFailCount;
+            TEST_ASSERT_EQUAL(Command::TEMP_UP, entry.command);
+            TEST_ASSERT_FALSE(entry.success);
+            TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(TxFailureCode::HW_UNAVAILABLE), entry.detailCode);
+        }
+    }
+    TEST_ASSERT_EQUAL_UINT32(3, thermostatControlCount);
+    TEST_ASSERT_EQUAL_UINT32(3, txFailCount);
 }
 
 void test_heater_logs_received_command_and_apply_result_without_ack() {
@@ -513,11 +520,13 @@ void test_retrofit_no_retry_drop_logic_on_failed_transmit() {
     }
 
     TEST_ASSERT_FALSE(sawDrop);
-    TEST_ASSERT_EQUAL_UINT32(4, logger.size());
-    TEST_ASSERT_EQUAL(LogEventType::THERMOSTAT_CONTROL, logger.entries()[0].type);
-    TEST_ASSERT_EQUAL(LogEventType::TRANSMIT_FAILED, logger.entries()[1].type);
-    TEST_ASSERT_EQUAL(LogEventType::THERMOSTAT_CONTROL, logger.entries()[2].type);
-    TEST_ASSERT_EQUAL(LogEventType::TRANSMIT_FAILED, logger.entries()[3].type);
+    TEST_ASSERT_EQUAL_UINT32(6, logger.size());
+    for (size_t i = 0; i < logger.size(); i += 2) {
+        TEST_ASSERT_EQUAL(LogEventType::THERMOSTAT_CONTROL, logger.entries()[i].type);
+        TEST_ASSERT_EQUAL(Command::TEMP_UP, logger.entries()[i].command);
+        TEST_ASSERT_EQUAL(LogEventType::TRANSMIT_FAILED, logger.entries()[i + 1].type);
+        TEST_ASSERT_EQUAL(Command::TEMP_UP, logger.entries()[i + 1].command);
+    }
 }
 
 }  // namespace

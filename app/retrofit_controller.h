@@ -9,6 +9,8 @@
 #include "../logger.h"
 #include "../scheduler/scheduler.h"
 #include "../time/wall_clock.h"
+#include "adaptive_thermostat_tuning.h"
+#include "pid_thermostat_controller.h"
 
 class RetrofitController {
 public:
@@ -16,6 +18,7 @@ public:
         bool powerEnabled = false;
         bool heaterCommandedOn = false;
         float targetTemperatureC = 0.0F;
+        ThermostatMode mode = ThermostatMode::FAST;
         TxFailureCode lastTxFailure = TxFailureCode::NONE;
     };
 
@@ -28,6 +31,8 @@ public:
     void begin(bool schedulerEnabled);
     void tick(uint32_t nowMs, uint32_t nowUs, const WallClockSnapshot& wallNow, float roomTemperatureC);
     HealthSnapshot healthSnapshot() const;
+    void setThermostatMode(ThermostatMode mode);
+    ThermostatMode thermostatMode() const;
 
 private:
     bool chooseNextCommand(uint32_t nowMs,
@@ -35,8 +40,7 @@ private:
                            Command& outCommand,
                            LogEventType& sourceType);
     bool applyThermostatControlCommand(Command command);
-    bool shouldHeat(float roomTemperatureC) const;
-    void runThermostatLoop(const WallClockSnapshot& wallNow, float roomTemperatureC);
+    void runThermostatLoop(uint32_t nowMs, const WallClockSnapshot& wallNow, float roomTemperatureC);
     void sendCommand(Command command, const WallClockSnapshot& wallNow, LogEventType sourceType);
 
     IRSender& irSender_;
@@ -48,5 +52,7 @@ private:
     bool powerEnabled_ = false;
     bool heaterCommandedOn_ = false;
     float targetTemperatureC_ = 22.0F;
+    PidThermostatController pidController_{};
+    AdaptiveThermostatTuning adaptiveTuning_{};
     TxFailureCode lastTxFailure_ = TxFailureCode::NONE;
 };
