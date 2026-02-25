@@ -13,10 +13,9 @@ struct Packet {
     uint8_t commandInverse;
 };
 
-bool encodeCommand(Command command, bool isAck, uint8_t& outCommandByte);
-bool decodeCommand(uint8_t commandByte, Command& outCommand, bool& outIsAck);
+bool encodeCommand(Command command, uint8_t& outCommandByte);
+bool decodeCommand(uint8_t commandByte, Command& outCommand);
 Packet makePacket(Command command);
-Packet makeAck(Command command);
-bool parsePacket(const Packet& packet, Command& outCommand, bool& outIsAck);
+bool parsePacket(const Packet& packet, Command& outCommand);
 
 }  // namespace protocol

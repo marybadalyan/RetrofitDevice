@@ -16,14 +16,13 @@ class IRSender {
 public:
     void begin();
     TxFailureCode sendCommand(Command command);
-    TxFailureCode sendAck(Command command);
 
 private:
     void mark(uint32_t timeMicros);
     void space(uint32_t timeMicros);
     void sendBit(bool bit);
     void sendByte(uint8_t data);
-    TxFailureCode sendFrame(Command command, bool isAck);
+    TxFailureCode sendFrame(Command command);
     bool hardwareAvailable_ = true;
     bool initialized_ = false;
 };

@@ -42,14 +42,11 @@ void loop() {
 
     DecodedFrame frame{};
     if (gIrReceiver.poll(frame)) {
-        gLogger.log(wallNow, LogEventType::IR_FRAME_RX, frame.command, true, frame.isAck ? 1U : 0U);
-
-        if (!frame.isAck) {
-            const bool applied = gHeater.applyCommand(frame.command);
-            gLogger.log(wallNow, LogEventType::STATE_CHANGE, frame.command, applied);
-            if (applied) {
-                gCommandStatusLed.showCommand(frame.command);
-            }
+        gLogger.log(wallNow, LogEventType::IR_FRAME_RX, frame.command, true);
+        const bool applied = gHeater.applyCommand(frame.command);
+        gLogger.log(wallNow, LogEventType::STATE_CHANGE, frame.command, applied);
+        if (applied) {
+            gCommandStatusLed.showCommand(frame.command);
         }
     }
 

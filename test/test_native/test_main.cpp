@@ -38,8 +38,6 @@ const char* eventToString(LogEventType type) {
     switch (type) {
         case LogEventType::COMMAND_SENT:
             return "COMMAND_SENT";
-        case LogEventType::ACK_RECEIVED:
-            return "ACK_RECEIVED";
         case LogEventType::COMMAND_DROPPED:
             return "COMMAND_DROPPED";
         case LogEventType::HUB_COMMAND_RX:
@@ -54,8 +52,6 @@ const char* eventToString(LogEventType type) {
             return "TRANSMIT_FAILED";
         case LogEventType::IR_FRAME_RX:
             return "IR_FRAME_RX";
-        case LogEventType::ACK_SENT:
-            return "ACK_SENT";
         default:
             return "UNKNOWN";
     }
@@ -329,7 +325,7 @@ void test_timeline_logs_full_wall_clock_sequence() {
         if (scheduler.nextDueCommand(nowMs, wall, due)) {
             logger.log(wall, LogEventType::SCHEDULE_COMMAND, due, true);
             logger.log(wall, LogEventType::COMMAND_SENT, due, true);
-            logger.log(wall, LogEventType::ACK_RECEIVED, due, true);
+            logger.log(wall, LogEventType::STATE_CHANGE, due, true);
         }
     };
 
@@ -351,7 +347,7 @@ void test_host_local_time_timeline_preview() {
 
     logger.log(wall, LogEventType::SCHEDULE_COMMAND, Command::ON, true);
     logger.log(wall, LogEventType::COMMAND_SENT, Command::ON, true);
-    logger.log(wall, LogEventType::ACK_RECEIVED, Command::ON, true);
+    logger.log(wall, LogEventType::STATE_CHANGE, Command::ON, true);
 
     TEST_ASSERT_EQUAL_UINT32(3, logger.size());
     printTimeline(logger, "TIMELINE-LOCAL");

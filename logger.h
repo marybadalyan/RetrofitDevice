@@ -9,15 +9,13 @@
 
 enum class LogEventType : uint8_t {
     COMMAND_SENT = 0,
-    ACK_RECEIVED = 1,
-    COMMAND_DROPPED = 2,
-    HUB_COMMAND_RX = 3, // command rescieved from hub 
-    SCHEDULE_COMMAND = 4,
-    STATE_CHANGE = 5,
-    THERMOSTAT_CONTROL = 6,
-    TRANSMIT_FAILED = 7,
-    IR_FRAME_RX = 8, // raw IR frame received from hardware 
-    ACK_SENT = 9
+    COMMAND_DROPPED = 1,
+    HUB_COMMAND_RX = 2, // command rescieved from hub
+    SCHEDULE_COMMAND = 3,
+    STATE_CHANGE = 4,
+    THERMOSTAT_CONTROL = 5,
+    TRANSMIT_FAILED = 6,
+    IR_FRAME_RX = 7, // raw IR frame received from hardware
 };
 
 struct LogEntry {

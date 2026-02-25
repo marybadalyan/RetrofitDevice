@@ -71,7 +71,7 @@ void IRSender::sendByte(uint8_t data) {
     }
 }
 
-TxFailureCode IRSender::sendFrame(Command command, bool isAck) {
+TxFailureCode IRSender::sendFrame(Command command) {
     if (!hardwareAvailable_) {
         return TxFailureCode::HW_UNAVAILABLE;
     }
@@ -84,8 +84,9 @@ TxFailureCode IRSender::sendFrame(Command command, bool isAck) {
         return TxFailureCode::INVALID_CONFIG;
     }
 
-    const protocol::Packet packet = isAck ? protocol::makeAck(command) : protocol::makePacket(command);
-    if (!protocol::parsePacket(packet, command, isAck)) {
+    const protocol::Packet packet = protocol::makePacket(command);
+    Command parsedCommand = Command::NONE;
+    if (!protocol::parsePacket(packet, parsedCommand) || parsedCommand != command) {
         return TxFailureCode::INVALID_COMMAND;
     }
 
@@ -107,12 +108,5 @@ TxFailureCode IRSender::sendCommand(Command command) {
     if (!isValidCommand(command)) {
         return TxFailureCode::INVALID_COMMAND;
     }
-    return sendFrame(command, false);
-}
-
-TxFailureCode IRSender::sendAck(Command command) {
-    if (!isValidCommand(command)) {
-        return TxFailureCode::INVALID_COMMAND;
-    }
-    return sendFrame(command, true);
+    return sendFrame(command);
 }

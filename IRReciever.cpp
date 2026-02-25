@@ -116,14 +116,12 @@ bool IRReceiver::decodeFrame(DecodedFrame& outFrame, const uint16_t* pulses, siz
     packet.command = decodedBytes[2];
     packet.commandInverse = decodedBytes[3];
 
-    bool isAck = false;
     Command cmd = Command::NONE;
-    if (!protocol::parsePacket(packet, cmd, isAck)) {
+    if (!protocol::parsePacket(packet, cmd)) {
         return false;
     }
 
     outFrame.command = cmd;
-    outFrame.isAck = isAck;
     return true;
 }
 
@@ -149,12 +147,9 @@ bool IRReceiver::poll(DecodedFrame& outFrame) {
 #if IR_RX_HAS_ARDUINO
         Serial.print("[IR-RX] decoded cmd=");
         Serial.print(commandToString(outFrame.command));
-        Serial.print(" ack=");
-        Serial.println(outFrame.isAck ? "1" : "0");
+        Serial.println();
 #else
-        std::printf("[IR-RX] decoded cmd=%s ack=%u\n",
-                    commandToString(outFrame.command),
-                    static_cast<unsigned>(outFrame.isAck ? 1U : 0U));
+        std::printf("[IR-RX] decoded cmd=%s\n", commandToString(outFrame.command));
         std::fflush(stdout);
 #endif
     }

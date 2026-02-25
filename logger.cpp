@@ -40,8 +40,6 @@ const char* eventToString(LogEventType type) {
     switch (type) {
         case LogEventType::COMMAND_SENT:
             return "COMMAND_SENT";
-        case LogEventType::ACK_RECEIVED:
-            return "ACK_RECEIVED";
         case LogEventType::COMMAND_DROPPED:
             return "COMMAND_DROPPED";
         case LogEventType::HUB_COMMAND_RX:
@@ -56,8 +54,6 @@ const char* eventToString(LogEventType type) {
             return "TRANSMIT_FAILED";
         case LogEventType::IR_FRAME_RX:
             return "IR_FRAME_RX";
-        case LogEventType::ACK_SENT:
-            return "ACK_SENT";
         default:
             return "UNKNOWN";
     }

@@ -16,7 +16,6 @@
 
 struct DecodedFrame {
     Command command = Command::NONE;
-    bool isAck = false;
 };
 
 class IRReceiver {

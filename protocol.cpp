@@ -23,64 +23,40 @@ bool isAddressMatch(const Packet& packet) {
 }
 }  // namespace
 
-bool encodeCommand(Command command, bool isAck, uint8_t& outCommandByte) {
+bool encodeCommand(Command command, uint8_t& outCommandByte) {
     switch (command) {
         case Command::ON:
-            outCommandByte = isAck ? kNecAckOn : kNecCommandOn;
+            outCommandByte = kNecCommandOn;
             return true;
         case Command::OFF:
-            outCommandByte = isAck ? kNecAckOff : kNecCommandOff;
+            outCommandByte = kNecCommandOff;
             return true;
         case Command::TEMP_UP:
-            outCommandByte = isAck ? kNecAckTempUp : kNecCommandTempUp;
+            outCommandByte = kNecCommandTempUp;
             return true;
         case Command::TEMP_DOWN:
-            outCommandByte = isAck ? kNecAckTempDown : kNecCommandTempDown;
+            outCommandByte = kNecCommandTempDown;
             return true;
         default:
             return false;
     }
 }
 
-bool decodeCommand(uint8_t commandByte, Command& outCommand, bool& outIsAck) {
+bool decodeCommand(uint8_t commandByte, Command& outCommand) {
     if (commandByte == kNecCommandOn) {
         outCommand = Command::ON;
-        outIsAck = false;
         return true;
     }
     if (commandByte == kNecCommandOff) {
         outCommand = Command::OFF;
-        outIsAck = false;
         return true;
     }
     if (commandByte == kNecCommandTempUp) {
         outCommand = Command::TEMP_UP;
-        outIsAck = false;
         return true;
     }
     if (commandByte == kNecCommandTempDown) {
         outCommand = Command::TEMP_DOWN;
-        outIsAck = false;
-        return true;
-    }
-    if (commandByte == kNecAckOn) {
-        outCommand = Command::ON;
-        outIsAck = true;
-        return true;
-    }
-    if (commandByte == kNecAckOff) {
-        outCommand = Command::OFF;
-        outIsAck = true;
-        return true;
-    }
-    if (commandByte == kNecAckTempUp) {
-        outCommand = Command::TEMP_UP;
-        outIsAck = true;
-        return true;
-    }
-    if (commandByte == kNecAckTempDown) {
-        outCommand = Command::TEMP_DOWN;
-        outIsAck = true;
         return true;
     }
     return false;
@@ -88,7 +64,7 @@ bool decodeCommand(uint8_t commandByte, Command& outCommand, bool& outIsAck) {
 
 Packet makePacket(Command command) {
     uint8_t encodedCommand = 0;
-    if (!encodeCommand(command, false, encodedCommand)) {
+    if (!encodeCommand(command, encodedCommand)) {
         return Packet{0, 0, 0, 0};
     }
 
@@ -105,26 +81,7 @@ Packet makePacket(Command command) {
     };
 }
 
-Packet makeAck(Command command) {
-    uint8_t encodedCommand = 0;
-    if (!encodeCommand(command, true, encodedCommand)) {
-        return Packet{0, 0, 0, 0};
-    }
-
-    const uint8_t addressLow = static_cast<uint8_t>(kNecDeviceAddress & 0xFFU);
-    const uint8_t addressHigh = static_cast<uint8_t>((kNecDeviceAddress >> 8) & 0xFFU);
-    const bool isClassicAddress = (addressHigh == invertByte(addressLow));
-    const uint8_t addressSecondByte = isClassicAddress ? invertByte(addressLow) : addressHigh;
-
-    return Packet{
-        addressLow,
-        addressSecondByte,
-        encodedCommand,
-        invertByte(encodedCommand),
-    };
-}
-
-bool parsePacket(const Packet& packet, Command& outCommand, bool& outIsAck) {
+bool parsePacket(const Packet& packet, Command& outCommand) {
     if (!isAddressMatch(packet)) {
         return false;
     }
@@ -132,7 +89,7 @@ bool parsePacket(const Packet& packet, Command& outCommand, bool& outIsAck) {
         return false;
     }
 
-    return decodeCommand(packet.command, outCommand, outIsAck);
+    return decodeCommand(packet.command, outCommand);
 }
 
 }  // namespace protocol
