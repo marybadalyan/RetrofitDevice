@@ -5,6 +5,7 @@
 #include "IRSender.h"
 #define private public
 #include "IRReciever.h"
+#include "app/adaptive_thermostat_tuning.h"
 #include "app/retrofit_controller.h"
 #undef private
 #include "heater/heater.h"
@@ -529,6 +530,69 @@ void test_retrofit_no_retry_drop_logic_on_failed_transmit() {
     }
 }
 
+void test_adaptive_tuning_increases_aggressiveness_when_heating_is_slow() {
+    AdaptiveThermostatTuning adaptive;
+    const ThermostatTuning base{1.6F, 0.02F, 3.0F, 3};
+
+    adaptive.reset(0U, 20.0F);
+    adaptive.onHeatingStepsSent(0U, 20.0F, 2);
+
+    AdaptiveThermostatTuning::Overrides out =
+        adaptive.update(420000U, 20.2F, ThermostatMode::FAST, base);
+
+    TEST_ASSERT_TRUE(out.kp > base.kp);
+    TEST_ASSERT_TRUE(out.maxSteps >= base.maxSteps);
+}
+
+void test_adaptive_tuning_decreases_aggressiveness_when_heating_is_fast() {
+    AdaptiveThermostatTuning adaptive;
+    const ThermostatTuning base{1.6F, 0.02F, 3.0F, 3};
+
+    adaptive.reset(0U, 20.0F);
+    adaptive.onHeatingStepsSent(0U, 20.0F, 1);
+
+    AdaptiveThermostatTuning::Overrides out =
+        adaptive.update(420000U, 20.8F, ThermostatMode::FAST, base);
+
+    TEST_ASSERT_TRUE(out.kp < base.kp);
+    TEST_ASSERT_TRUE(out.maxSteps <= base.maxSteps);
+}
+
+void test_adaptive_tuning_does_not_adjust_before_window() {
+    AdaptiveThermostatTuning adaptive;
+    const ThermostatTuning base{1.6F, 0.02F, 3.0F, 3};
+
+    adaptive.reset(0U, 20.0F);
+    adaptive.onHeatingStepsSent(0U, 20.0F, 1);
+
+    AdaptiveThermostatTuning::Overrides out =
+        adaptive.update(60000U, 20.4F, ThermostatMode::FAST, base);
+
+    TEST_ASSERT_FLOAT_WITHIN(0.0001F, base.kp, out.kp);
+    TEST_ASSERT_EQUAL_INT(base.maxSteps, out.maxSteps);
+}
+
+void test_adaptive_tuning_respects_kp_and_step_bounds() {
+    AdaptiveThermostatTuning::Config config;
+    config.fastBounds.kpMin = 1.55F;
+    config.fastBounds.kpMax = 1.62F;
+    config.fastBounds.maxStepsMin = 1;
+    config.fastBounds.maxStepsMax = 2;
+    AdaptiveThermostatTuning adaptive(config);
+    const ThermostatTuning base{1.6F, 0.02F, 3.0F, 3};
+
+    adaptive.reset(0U, 20.0F);
+    adaptive.onHeatingStepsSent(0U, 20.0F, 1);
+
+    AdaptiveThermostatTuning::Overrides out =
+        adaptive.update(420000U, 20.1F, ThermostatMode::FAST, base);
+
+    TEST_ASSERT_TRUE(out.kp <= config.fastBounds.kpMax);
+    TEST_ASSERT_TRUE(out.kp >= config.fastBounds.kpMin);
+    TEST_ASSERT_TRUE(out.maxSteps <= config.fastBounds.maxStepsMax);
+    TEST_ASSERT_TRUE(out.maxSteps >= config.fastBounds.maxStepsMin);
+}
+
 }  // namespace
 
 void setUp() {}
@@ -553,6 +617,10 @@ int main(int, char**) {
     RUN_TEST(test_hub_has_priority_over_scheduler_when_both_ready);
     RUN_TEST(test_hub_temp_up_changes_target_without_transmit_when_power_off);
     RUN_TEST(test_retrofit_no_retry_drop_logic_on_failed_transmit);
+    RUN_TEST(test_adaptive_tuning_increases_aggressiveness_when_heating_is_slow);
+    RUN_TEST(test_adaptive_tuning_decreases_aggressiveness_when_heating_is_fast);
+    RUN_TEST(test_adaptive_tuning_does_not_adjust_before_window);
+    RUN_TEST(test_adaptive_tuning_respects_kp_and_step_bounds);
 
     return UNITY_END();
 }
