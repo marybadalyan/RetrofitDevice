@@ -13,11 +13,6 @@ on:
         required: false
         default: true
         type: boolean
-      run_remote:
-        description: "Run remote board job"
-        required: false
-        default: false
-        type: boolean
 
 jobs:
   retrofit:
@@ -126,58 +121,4 @@ jobs:
             pio test -e "$PIO_ENV" -f test_hw_heater --upload-port "$UPLOAD_PORT" --test-port "$TEST_PORT" -v
           else
             echo "No test/test_hw_heater suite found; upload-only run complete."
-          fi
-
-  remote:
-    if: ${{ inputs.run_remote }}
-    runs-on: [self-hosted, linux, esp32-lab]
-    env:
-      PIO_ENV: remote
-      UPLOAD_PORT: /dev/ttyUSB2
-      TEST_PORT: /dev/ttyUSB2
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install PlatformIO
-        run: |
-          python -m pip install --upgrade pip
-          pip install platformio
-
-      - name: Detect PlatformIO project dir
-        id: pio-dir
-        run: |
-          if [ -f "platformio.ini" ]; then
-            echo "dir=." >> "$GITHUB_OUTPUT"
-          elif [ -f "RetrofitDevice/platformio.ini" ]; then
-            echo "dir=RetrofitDevice" >> "$GITHUB_OUTPUT"
-          else
-            echo "Could not find platformio.ini" >&2
-            exit 1
-          fi
-
-      - name: Validate serial device
-        run: |
-          test -e "$UPLOAD_PORT"
-
-      - name: Build firmware
-        working-directory: ${{ steps.pio-dir.outputs.dir }}
-        run: pio run -e "$PIO_ENV"
-
-      - name: Upload firmware
-        working-directory: ${{ steps.pio-dir.outputs.dir }}
-        run: pio run -e "$PIO_ENV" -t upload --upload-port "$UPLOAD_PORT"
-
-      - name: Run hardware tests if present
-        working-directory: ${{ steps.pio-dir.outputs.dir }}
-        run: |
-          if [ -d "test/test_hw_remote" ]; then
-            pio test -e "$PIO_ENV" -f test_hw_remote --upload-port "$UPLOAD_PORT" --test-port "$TEST_PORT" -v
-          else
-            echo "No test/test_hw_remote suite found; upload-only run complete."
           fi
