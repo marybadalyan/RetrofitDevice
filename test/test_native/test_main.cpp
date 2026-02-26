@@ -9,6 +9,7 @@
 #include "app/retrofit_controller.h"
 #undef private
 #include "heater/heater.h"
+#include "hub/hub_ai_insights.h"
 #include "hub/hub_mock_scheduler.h"
 #include "hub/hub_receiver.h"
 #include "logger.h"
@@ -609,6 +610,112 @@ void test_adaptive_tuning_uses_negative_steps_for_adaptation() {
     TEST_ASSERT_TRUE(out.maxSteps <= base.maxSteps);
 }
 
+void test_hub_ai_recommendation_is_advisory_only_and_clamped() {
+    HubAiInsights insights;
+
+    HubAiInsights::LogEntry sample{};
+    sample.timestampMs = 1000;
+    sample.roomTemperatureC = 21.0F;
+    sample.targetTemperatureC = 22.0F;
+    sample.commandSent = HubAiInsights::CommandSent::NONE;
+    sample.mode = HubAiInsights::Mode::COMFORT;
+    insights.ingest(sample);
+
+    const HubAiInsights::PidRecommendation recommendation = insights.recommendation();
+    TEST_ASSERT_TRUE(recommendation.advisoryOnly);
+    TEST_ASSERT_TRUE(recommendation.requiresUserIntent);
+    TEST_ASSERT_FALSE(recommendation.kdAutoChange);
+    TEST_ASSERT_TRUE(recommendation.kpScale >= 0.7F && recommendation.kpScale <= 1.3F);
+    TEST_ASSERT_TRUE(recommendation.kiScale >= 0.9F && recommendation.kiScale <= 1.1F);
+}
+
+void test_hub_ai_detects_repeated_overshoot() {
+    HubAiInsights model;
+
+    HubAiInsights::LogEntry e{};
+    e.targetTemperatureC = 22.0F;
+    e.commandSent = HubAiInsights::CommandSent::NONE;
+    e.mode = HubAiInsights::Mode::COMFORT;
+
+    e.timestampMs = 1000; e.roomTemperatureC = 22.0F; model.ingest(e);
+    e.timestampMs = 2000; e.roomTemperatureC = 23.8F; model.ingest(e);
+    e.timestampMs = 3000; e.roomTemperatureC = 22.0F; model.ingest(e);
+    e.timestampMs = 4000; e.roomTemperatureC = 23.7F; model.ingest(e);
+
+    TEST_ASSERT_TRUE(model.insights().overshoot_detected);
+}
+
+void test_hub_ai_detects_window_open_drop() {
+    HubAiInsights model;
+    HubAiInsights::LogEntry e{};
+    e.targetTemperatureC = 22.0F;
+    e.mode = HubAiInsights::Mode::COMFORT;
+    e.pidOutput = 0.0F;
+
+    e.timestampMs = 0; e.roomTemperatureC = 22.0F; e.commandSent = HubAiInsights::CommandSent::NONE; model.ingest(e);
+    e.timestampMs = 60000; e.roomTemperatureC = 21.7F; e.commandSent = HubAiInsights::CommandSent::NONE; model.ingest(e);
+    e.timestampMs = 120000; e.roomTemperatureC = 21.4F; e.commandSent = HubAiInsights::CommandSent::NONE; model.ingest(e);
+
+    e.timestampMs = 180000; e.roomTemperatureC = 21.5F; e.targetTemperatureC = 23.0F;
+    e.commandSent = HubAiInsights::CommandSent::HEAT_UP; model.ingest(e);
+
+    e.timestampMs = 240000; e.roomTemperatureC = 20.0F; e.commandSent = HubAiInsights::CommandSent::NONE; model.ingest(e);
+
+    TEST_ASSERT_TRUE(model.insights().window_open_detected);
+}
+
+void test_hub_ai_hardware_failure_detection_and_recovery() {
+    HubAiInsights model;
+    HubAiInsights::LogEntry e{};
+    e.targetTemperatureC = 24.0F;
+    e.mode = HubAiInsights::Mode::COMFORT;
+    e.roomTemperatureC = 20.0F;
+
+    // Three weak-heating windows with multiple HEAT_UP commands each.
+    e.timestampMs = 1000; e.commandSent = HubAiInsights::CommandSent::HEAT_UP; model.ingest(e);
+    e.timestampMs = 61000; e.commandSent = HubAiInsights::CommandSent::HEAT_UP; model.ingest(e);
+    e.timestampMs = 421000; e.commandSent = HubAiInsights::CommandSent::NONE; e.roomTemperatureC = 20.1F; model.ingest(e);
+
+    e.timestampMs = 422000; e.commandSent = HubAiInsights::CommandSent::HEAT_UP; e.roomTemperatureC = 20.1F; model.ingest(e);
+    e.timestampMs = 482000; e.commandSent = HubAiInsights::CommandSent::HEAT_UP; model.ingest(e);
+    e.timestampMs = 842000; e.commandSent = HubAiInsights::CommandSent::NONE; e.roomTemperatureC = 20.2F; model.ingest(e);
+
+    e.timestampMs = 843000; e.commandSent = HubAiInsights::CommandSent::HEAT_UP; e.roomTemperatureC = 20.2F; model.ingest(e);
+    e.timestampMs = 903000; e.commandSent = HubAiInsights::CommandSent::HEAT_UP; model.ingest(e);
+    e.timestampMs = 1263000; e.commandSent = HubAiInsights::CommandSent::NONE; e.roomTemperatureC = 20.3F; model.ingest(e);
+
+    TEST_ASSERT_TRUE(model.insights().hardware_failure_detected);
+    TEST_ASSERT_TRUE(model.probableHardwareCause()[0] != '\0');
+
+    // Recovery window: normal heating resumes.
+    e.timestampMs = 1264000; e.commandSent = HubAiInsights::CommandSent::HEAT_UP; e.roomTemperatureC = 20.3F; model.ingest(e);
+    e.timestampMs = 1324000; e.commandSent = HubAiInsights::CommandSent::HEAT_UP; model.ingest(e);
+    e.timestampMs = 1684000; e.commandSent = HubAiInsights::CommandSent::NONE; e.roomTemperatureC = 21.0F; model.ingest(e);
+
+    TEST_ASSERT_FALSE(model.insights().hardware_failure_detected);
+}
+
+void test_hub_ai_eco_kp_is_lower_than_comfort() {
+    HubAiInsights model;
+
+    HubAiInsights::LogEntry e{};
+    e.timestampMs = 1000;
+    e.roomTemperatureC = 21.0F;
+    e.targetTemperatureC = 22.0F;
+    e.commandSent = HubAiInsights::CommandSent::NONE;
+    e.mode = HubAiInsights::Mode::COMFORT;
+    model.ingest(e);
+    const float comfortKp = model.insights().kp_scale;
+
+    e.timestampMs = 2000;
+    e.mode = HubAiInsights::Mode::ECO;
+    e.roomTemperatureC = 21.2F;
+    model.ingest(e);
+    const float ecoKp = model.insights().kp_scale;
+
+    TEST_ASSERT_TRUE(ecoKp < comfortKp);
+}
+
 }  // namespace
 
 void setUp() {}
@@ -638,6 +745,11 @@ int main(int, char**) {
     RUN_TEST(test_adaptive_tuning_does_not_adjust_before_window);
     RUN_TEST(test_adaptive_tuning_respects_kp_and_step_bounds);
     RUN_TEST(test_adaptive_tuning_uses_negative_steps_for_adaptation);
+    RUN_TEST(test_hub_ai_recommendation_is_advisory_only_and_clamped);
+    RUN_TEST(test_hub_ai_detects_repeated_overshoot);
+    RUN_TEST(test_hub_ai_detects_window_open_drop);
+    RUN_TEST(test_hub_ai_hardware_failure_detection_and_recovery);
+    RUN_TEST(test_hub_ai_eco_kp_is_lower_than_comfort);
 
     return UNITY_END();
 }
