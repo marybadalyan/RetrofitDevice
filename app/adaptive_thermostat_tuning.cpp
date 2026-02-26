@@ -13,8 +13,8 @@ void AdaptiveThermostatTuning::reset(uint32_t nowMs, float roomTempC) {
     sampleStepsSent_ = 0;
 }
 
-void AdaptiveThermostatTuning::onHeatingStepsSent(uint32_t nowMs, float roomTempC, int8_t stepsSent) {
-    if (stepsSent <= 0) {
+void AdaptiveThermostatTuning::onControlStepsSent(uint32_t nowMs, float roomTempC, int8_t stepsSent) {
+    if (stepsSent == 0) {
         return;
     }
 
@@ -27,8 +27,12 @@ void AdaptiveThermostatTuning::onHeatingStepsSent(uint32_t nowMs, float roomTemp
     }
 
     // Keep one evaluation sample active and accumulate step effort conservatively.
+    // Bound in both directions so positive and negative step effects can be evaluated.
     const int accumulated = static_cast<int>(sampleStepsSent_) + static_cast<int>(stepsSent);
-    sampleStepsSent_ = clampSteps(accumulated, 1, 32);
+    sampleStepsSent_ = clampSteps(accumulated, -32, 32);
+    if (sampleStepsSent_ == 0) {
+        sampleStepsSent_ = (stepsSent > 0) ? 1 : -1;
+    }
 }
 
 AdaptiveThermostatTuning::Overrides AdaptiveThermostatTuning::update(uint32_t nowMs,
@@ -42,9 +46,13 @@ AdaptiveThermostatTuning::Overrides AdaptiveThermostatTuning::update(uint32_t no
         const float deltaTimeSeconds = static_cast<float>(nowMs - sampleStartMs_) / 1000.0F;
 
         if (deltaTimeSeconds > 0.0F) {
-            // Normalize by sent steps so stronger command batches do not over-bias adaptation.
-            const float stepCount = static_cast<float>((sampleStepsSent_ > 0) ? sampleStepsSent_ : 1);
-            const float measuredRate = (deltaTemp / deltaTimeSeconds) / stepCount;
+            // Normalize by command magnitude and fold direction into effectiveness so
+            // positive and negative steps can both adapt aggressiveness.
+            const int stepMagnitudeInt =
+                (sampleStepsSent_ < 0) ? -static_cast<int>(sampleStepsSent_) : static_cast<int>(sampleStepsSent_);
+            const float stepMagnitude = static_cast<float>((stepMagnitudeInt > 0) ? stepMagnitudeInt : 1);
+            const float direction = (sampleStepsSent_ > 0) ? 1.0F : -1.0F;
+            const float measuredRate = ((deltaTemp / deltaTimeSeconds) * direction) / stepMagnitude;
 
             if (!rateAverageInitialized_) {
                 heatingRateAverageCPerSec_ = measuredRate;

@@ -535,7 +535,7 @@ void test_adaptive_tuning_increases_aggressiveness_when_heating_is_slow() {
     const ThermostatTuning base{1.6F, 0.02F, 3.0F, 3};
 
     adaptive.reset(0U, 20.0F);
-    adaptive.onHeatingStepsSent(0U, 20.0F, 2);
+    adaptive.onControlStepsSent(0U, 20.0F, 2);
 
     AdaptiveThermostatTuning::Overrides out =
         adaptive.update(420000U, 20.2F, ThermostatMode::FAST, base);
@@ -549,7 +549,7 @@ void test_adaptive_tuning_decreases_aggressiveness_when_heating_is_fast() {
     const ThermostatTuning base{1.6F, 0.02F, 3.0F, 3};
 
     adaptive.reset(0U, 20.0F);
-    adaptive.onHeatingStepsSent(0U, 20.0F, 1);
+    adaptive.onControlStepsSent(0U, 20.0F, 1);
 
     AdaptiveThermostatTuning::Overrides out =
         adaptive.update(420000U, 20.8F, ThermostatMode::FAST, base);
@@ -563,7 +563,7 @@ void test_adaptive_tuning_does_not_adjust_before_window() {
     const ThermostatTuning base{1.6F, 0.02F, 3.0F, 3};
 
     adaptive.reset(0U, 20.0F);
-    adaptive.onHeatingStepsSent(0U, 20.0F, 1);
+    adaptive.onControlStepsSent(0U, 20.0F, 1);
 
     AdaptiveThermostatTuning::Overrides out =
         adaptive.update(60000U, 20.4F, ThermostatMode::FAST, base);
@@ -582,7 +582,7 @@ void test_adaptive_tuning_respects_kp_and_step_bounds() {
     const ThermostatTuning base{1.6F, 0.02F, 3.0F, 3};
 
     adaptive.reset(0U, 20.0F);
-    adaptive.onHeatingStepsSent(0U, 20.0F, 1);
+    adaptive.onControlStepsSent(0U, 20.0F, 1);
 
     AdaptiveThermostatTuning::Overrides out =
         adaptive.update(420000U, 20.1F, ThermostatMode::FAST, base);
@@ -591,6 +591,22 @@ void test_adaptive_tuning_respects_kp_and_step_bounds() {
     TEST_ASSERT_TRUE(out.kp >= config.fastBounds.kpMin);
     TEST_ASSERT_TRUE(out.maxSteps <= config.fastBounds.maxStepsMax);
     TEST_ASSERT_TRUE(out.maxSteps >= config.fastBounds.maxStepsMin);
+}
+
+void test_adaptive_tuning_uses_negative_steps_for_adaptation() {
+    AdaptiveThermostatTuning adaptive;
+    const ThermostatTuning base{1.6F, 0.02F, 3.0F, 3};
+
+    adaptive.reset(0U, 23.0F);
+    adaptive.onControlStepsSent(0U, 23.0F, -1);
+
+    AdaptiveThermostatTuning::Overrides out =
+        adaptive.update(420000U, 22.1F, ThermostatMode::FAST, base);
+
+    // Strong cooling response after negative steps means system is very responsive,
+    // so adaptation should reduce aggressiveness.
+    TEST_ASSERT_TRUE(out.kp < base.kp);
+    TEST_ASSERT_TRUE(out.maxSteps <= base.maxSteps);
 }
 
 }  // namespace
@@ -621,6 +637,7 @@ int main(int, char**) {
     RUN_TEST(test_adaptive_tuning_decreases_aggressiveness_when_heating_is_fast);
     RUN_TEST(test_adaptive_tuning_does_not_adjust_before_window);
     RUN_TEST(test_adaptive_tuning_respects_kp_and_step_bounds);
+    RUN_TEST(test_adaptive_tuning_uses_negative_steps_for_adaptation);
 
     return UNITY_END();
 }

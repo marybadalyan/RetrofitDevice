@@ -37,7 +37,7 @@ public:
     explicit AdaptiveThermostatTuning(const Config& config);
 
     void reset(uint32_t nowMs, float roomTempC);
-    void onHeatingStepsSent(uint32_t nowMs, float roomTempC, int8_t stepsSent);
+    void onControlStepsSent(uint32_t nowMs, float roomTempC, int8_t stepsSent);
     Overrides update(uint32_t nowMs, float roomTempC, ThermostatMode mode, const ThermostatTuning& baseTuning);
 
 private:

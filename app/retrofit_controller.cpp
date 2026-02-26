@@ -136,9 +136,7 @@ void RetrofitController::runThermostatLoop(uint32_t nowMs,
 
     const Command stepCommand = (pidResult.steps > 0) ? Command::TEMP_UP : Command::TEMP_DOWN;
     const int8_t stepCount = static_cast<int8_t>((pidResult.steps > 0) ? pidResult.steps : -pidResult.steps);
-    if (pidResult.steps > 0) {
-        adaptiveTuning_.onHeatingStepsSent(nowMs, roomTemperatureC, stepCount);
-    }
+    adaptiveTuning_.onControlStepsSent(nowMs, roomTemperatureC, pidResult.steps);
 
     for (int8_t i = 0; i < stepCount; ++i) {
         sendCommand(stepCommand, wallNow, LogEventType::THERMOSTAT_CONTROL);
