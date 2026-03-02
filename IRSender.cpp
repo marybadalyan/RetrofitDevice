@@ -86,11 +86,13 @@ TxFailureCode IRSender::sendFrame(Command command) {
 
     const protocol::Packet packet = protocol::makePacket(command);
     Command parsedCommand = Command::NONE;
+    // safety / sanity check 
     if (!protocol::parsePacket(packet, parsedCommand) || parsedCommand != command) {
         return TxFailureCode::INVALID_COMMAND;
     }
 
     // NEC frame: 9ms mark + 4.5ms space + address + ~address + command + ~command.
+    // header 
     mark(9000);
     space(4500);
 

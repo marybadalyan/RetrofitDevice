@@ -12,6 +12,8 @@ constexpr bool kStatusLedEnabled = true;
 constexpr uint8_t kIrPwmChannel = 0;
 constexpr uint32_t kIrCarrierFreqHz = 38000;
 constexpr uint8_t kIrPwmResolutionBits = 8;
+
+// NEC protocol settings
 constexpr uint16_t kNecDeviceAddress = 0x00FF;
 constexpr uint8_t kNecCommandOn = 0x01;
 constexpr uint8_t kNecCommandOff = 0x02;

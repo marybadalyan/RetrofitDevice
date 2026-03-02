@@ -23,6 +23,6 @@ private:
     void sendBit(bool bit);
     void sendByte(uint8_t data);
     TxFailureCode sendFrame(Command command);
-    bool hardwareAvailable_ = true;
+    bool hardwareAvailable_ = true; // assume true until we check
     bool initialized_ = false;
 };

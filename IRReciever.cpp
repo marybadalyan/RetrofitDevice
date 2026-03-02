@@ -46,13 +46,13 @@ void IRReceiver::begin() {
     attachInterrupt(digitalPinToInterrupt(kIrRxPin), &IRReceiver::isrThunk, CHANGE);
 }
 
-void IRReceiver::isrThunk() {
+void IRAM_ATTR IRReceiver::isrThunk() {
     if (activeInstance_ != nullptr) {
         activeInstance_->onEdgeInterrupt();
     }
 }
 
-void IRReceiver::onEdgeInterrupt() {
+void IRAM_ATTR IRReceiver::onEdgeInterrupt() {
     const uint32_t nowUs = micros();
     const uint32_t deltaUs = nowUs - lastEdgeUs_;
     lastEdgeUs_ = nowUs;
