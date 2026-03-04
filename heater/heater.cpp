@@ -34,25 +34,6 @@ bool Heater::powerEnabled() const {
     return powerEnabled_;
 }
 
-void RelayDriver::begin() {
-#if __has_include(<Arduino.h>)
-    if (!kUseRelayOutput) {
-        return;
-    }
-#endif
-    pinMode(kRelayPin, OUTPUT);
-    digitalWrite(kRelayPin, LOW);
-}
-
-void RelayDriver::setEnabled(bool enabled) {
-#if __has_include(<Arduino.h>)
-    if (!kUseRelayOutput) {
-        return;
-    }
-#endif
-    digitalWrite(kRelayPin, enabled ? HIGH : LOW);
-}
-
 void DisplayDriver::begin() {}
 
 void DisplayDriver::showPowerState(bool isPowerEnabled) {

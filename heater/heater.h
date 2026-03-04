@@ -13,12 +13,6 @@ private:
     bool powerEnabled_ = false;
 };
 
-class RelayDriver {
-public:
-    void begin();
-    void setEnabled(bool enabled);
-};
-
 class DisplayDriver {
 public:
     void begin();
