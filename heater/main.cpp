@@ -17,7 +17,6 @@ IRReceiver gIrReceiver;
 Logger gLogger;
 WallClock gWallClock;
 Heater gHeater;
-RelayDriver gRelay;
 DisplayDriver gDisplay;
 CommandStatusLed gCommandStatusLed;
 }  // namespace
@@ -27,7 +26,6 @@ void setup() {
     Serial.begin(115200);
 #endif
     gIrReceiver.begin();
-    gRelay.begin();
     gDisplay.begin();
     gCommandStatusLed.begin();
 
@@ -50,6 +48,5 @@ void loop() {
         }
     }
 
-    gRelay.setEnabled(gHeater.powerEnabled());
     gDisplay.showPowerState(gHeater.powerEnabled());
 }
