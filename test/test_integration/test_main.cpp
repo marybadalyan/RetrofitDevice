@@ -12,6 +12,7 @@
 
 namespace {
 
+// Builds a valid wall-clock snapshot for deterministic integration ticks.
 WallClockSnapshot makeWall(uint32_t dateKey,
                            uint8_t weekday,
                            uint8_t hour,
@@ -33,11 +34,13 @@ WallClockSnapshot makeWall(uint32_t dateKey,
     return snapshot;
 }
 
+// Integration tests run on host, so force sender internals to "ready" state.
 void forceSenderReady(IRSender& sender) {
     sender.hardwareAvailable_ = true;
     sender.initialized_ = true;
 }
 
+// Hub ON command should be consumed by controller and drive thermostat activity.
 void test_integration_hub_on_updates_state_without_ack() {
     IRSender sender;
     sender.begin();
@@ -69,6 +72,7 @@ void test_integration_hub_on_updates_state_without_ack() {
     TEST_ASSERT_TRUE(sawTempUp);
 }
 
+// With high ambient temperature, thermostat should emit cooling/down action.
 void test_integration_thermostat_turns_off_and_heater_applies_off() {
     IRSender sender;
     sender.begin();
@@ -100,6 +104,7 @@ void test_integration_thermostat_turns_off_and_heater_applies_off() {
     TEST_ASSERT_TRUE(sawTempDown);
 }
 
+// Current behavior has no retry/drop-queue logic; verify no COMMAND_DROPPED is logged.
 void test_integration_no_command_drop_without_ack_logic() {
     IRSender sender;
     sender.begin();
@@ -130,6 +135,7 @@ void test_integration_no_command_drop_without_ack_logic() {
     TEST_ASSERT_FALSE(sawDrop);
 }
 
+// Hub command wins for the current tick; scheduler command should still run later.
 void test_integration_hub_overrides_scheduler_for_current_tick() {
     IRSender sender;
     sender.begin();

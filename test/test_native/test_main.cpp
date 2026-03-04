@@ -18,6 +18,7 @@
 
 namespace {
 
+// Helper for constructing deterministic wall snapshots in scheduler/controller tests.
 WallClockSnapshot makeWall(uint32_t dateKey,
                            uint8_t weekday,
                            uint8_t hour,
@@ -59,6 +60,7 @@ const char* eventToString(LogEventType type) {
     }
 }
 
+// Pretty-printer used by timeline preview tests.
 void printTimeline(const Logger& logger, const char* label = "TIMELINE") {
     std::printf("\n[%s] ---- BEGIN ----\n", label);
     for (size_t i = 0; i < logger.size(); ++i) {
@@ -77,6 +79,7 @@ void printTimeline(const Logger& logger, const char* label = "TIMELINE") {
     std::printf("[%s] ---- END ----\n\n", label);
 }
 
+// Reads host local time and converts it into WallClockSnapshot format.
 WallClockSnapshot hostLocalNow(uint32_t bootMs, uint32_t bootUs) {
     WallClockSnapshot out{};
     out.bootMs = bootMs;
@@ -114,6 +117,7 @@ WallClockSnapshot hostLocalNow(uint32_t bootMs, uint32_t bootUs) {
     return out;
 }
 
+// Utility used by timeline tests to map second offsets to H:M:S.
 void secondsToHms(uint32_t secondsOfDay, uint8_t& hour, uint8_t& minute, uint8_t& second) {
     const uint32_t bounded = secondsOfDay % 86400U;
     hour = static_cast<uint8_t>(bounded / 3600U);
@@ -121,6 +125,7 @@ void secondsToHms(uint32_t secondsOfDay, uint8_t& hour, uint8_t& minute, uint8_t
     second = static_cast<uint8_t>(bounded % 60U);
 }
 
+// Returns host-local wall time shifted by offsetSec (or stable fallback if host time is unavailable).
 WallClockSnapshot hostLocalWithSecondOffset(uint32_t bootMs, uint32_t bootUs, uint32_t offsetSec) {
     WallClockSnapshot wall = hostLocalNow(bootMs, bootUs);
     if (!wall.valid) {
@@ -139,6 +144,36 @@ WallClockSnapshot hostLocalWithSecondOffset(uint32_t bootMs, uint32_t bootUs, ui
     return wall;
 }
 
+// Feeds synthetic thermal telemetry so HubAiInsights is tested against varying heater behavior.
+void feedSyntheticHeaterProfile(HubAiInsights& model,
+                                float initialTempC,
+                                float targetTempC,
+                                float heatGainPerStepC,
+                                float coolLossPerStepC,
+                                uint32_t stepMs,
+                                size_t totalSteps) {
+    HubAiInsights::LogEntry e{};
+    e.timestampMs = 0;
+    e.roomTemperatureC = initialTempC;
+    e.targetTemperatureC = targetTempC;
+    e.mode = HubAiInsights::Mode::COMFORT;
+    e.pidOutput = 0.0F;
+
+    for (size_t i = 0; i < totalSteps; ++i) {
+        const bool needsHeat = e.roomTemperatureC < (targetTempC - 0.2F);
+        e.commandSent = needsHeat ? HubAiInsights::CommandSent::HEAT_UP : HubAiInsights::CommandSent::NONE;
+        model.ingest(e);
+
+        if (needsHeat) {
+            e.roomTemperatureC += heatGainPerStepC;
+        } else {
+            e.roomTemperatureC -= coolLossPerStepC;
+        }
+        e.timestampMs += stepMs;
+    }
+}
+
+// Relative scheduler entry should fire exactly at/after due time.
 void test_scheduler_relative_due() {
     CommandScheduler scheduler;
     scheduler.setEnabled(true);
@@ -152,6 +187,7 @@ void test_scheduler_relative_due() {
     TEST_ASSERT_EQUAL(Command::ON, out);
 }
 
+// Daily entry should execute once per day and be allowed again on next date.
 void test_scheduler_daily_once_per_day() {
     CommandScheduler scheduler;
     scheduler.setEnabled(true);
@@ -171,6 +207,7 @@ void test_scheduler_daily_once_per_day() {
     TEST_ASSERT_EQUAL(Command::ON, out);
 }
 
+// "Next planned" should return the nearest command and indicate source type (relative vs wall).
 void test_scheduler_next_planned_command() {
     CommandScheduler scheduler;
     scheduler.setEnabled(true);
@@ -188,6 +225,7 @@ void test_scheduler_next_planned_command() {
     TEST_ASSERT_EQUAL_UINT32(2, dueInSec);
 }
 
+// Logger must preserve failure detailCode field.
 void test_logger_detail_code_is_recorded() {
     Logger logger;
     WallClockSnapshot ts{};
@@ -210,6 +248,7 @@ void test_logger_detail_code_is_recorded() {
     TEST_ASSERT_EQUAL_UINT8(4, first.detailCode);
 }
 
+// Native host build has no Arduino hardware, so TX must report HW_UNAVAILABLE.
 void test_ir_sender_reports_hardware_unavailable_in_native() {
     IRSender sender;
     sender.begin();
@@ -218,6 +257,7 @@ void test_ir_sender_reports_hardware_unavailable_in_native() {
     TEST_ASSERT_EQUAL(TxFailureCode::HW_UNAVAILABLE, result);
 }
 
+// Mock scheduler should emit expected fallback and wall-clock commands.
 void test_hub_mock_scheduler_pushes_expected_commands() {
     HubReceiver hub;
     HubMockScheduler mock;
@@ -246,6 +286,7 @@ void test_hub_mock_scheduler_pushes_expected_commands() {
     TEST_ASSERT_EQUAL(Command::OFF, out);
 }
 
+// Disabled mock scheduler must not enqueue any hub command.
 void test_hub_mock_scheduler_can_be_disabled() {
     HubReceiver hub;
     HubMockScheduler mock;
@@ -257,6 +298,7 @@ void test_hub_mock_scheduler_can_be_disabled() {
     TEST_ASSERT_FALSE(hub.poll(out));
 }
 
+// MockClock lets daily scheduling tests run without realtime dependencies.
 void test_mock_clock_daily_schedule_at_fixed_times() {
     CommandScheduler scheduler;
     scheduler.setEnabled(true);
@@ -284,6 +326,7 @@ void test_mock_clock_daily_schedule_at_fixed_times() {
     TEST_ASSERT_EQUAL(Command::OFF, out);
 }
 
+// End-to-end timeline test: schedule events produce expected 3-log triplets.
 void test_timeline_logs_full_wall_clock_sequence() {
     Logger logger;
     CommandScheduler scheduler;
@@ -340,6 +383,7 @@ void test_timeline_logs_full_wall_clock_sequence() {
     // Keep this deterministic test silent; local-time timeline is printed by host test below.
 }
 
+// Diagnostic-only preview that prints a local-time formatted timeline.
 void test_host_local_time_timeline_preview() {
     Logger logger;
     const WallClockSnapshot wall = hostLocalNow(5000, 5000000);
@@ -355,6 +399,7 @@ void test_host_local_time_timeline_preview() {
     printTimeline(logger, "TIMELINE-LOCAL");
 }
 
+// NtpClock should advance unixMs proportionally with boot-millisecond delta.
 void test_ntp_clock_from_set_unix_ms_progresses_with_boot_ms() {
     NtpClock clock;
     clock.setUnixTimeMs(1700000000000ULL, 1000U);
@@ -368,6 +413,7 @@ void test_ntp_clock_from_set_unix_ms_progresses_with_boot_ms() {
     TEST_ASSERT_EQUAL_UINT64(1700000001500ULL, later.unixMs);
 }
 
+// Controller should log hub source event, then thermostat actions with TX failures in native mode.
 void test_retrofit_logs_command_then_tx_failure_in_native() {
     IRSender sender;
     sender.begin();
@@ -411,6 +457,7 @@ void test_retrofit_logs_command_then_tx_failure_in_native() {
     TEST_ASSERT_EQUAL_UINT32(3, txFailCount);
 }
 
+// Heater apply result should be reflected in STATE_CHANGE logging.
 void test_heater_logs_received_command_and_apply_result_without_ack() {
     Heater heater;
     Logger logger;
@@ -428,6 +475,7 @@ void test_heater_logs_received_command_and_apply_result_without_ack() {
     TEST_ASSERT_TRUE(stateChange.success);
 }
 
+// If hub and scheduler are both ready, hub wins current tick; schedule remains pending.
 void test_hub_has_priority_over_scheduler_when_both_ready() {
     IRSender sender;
     sender.begin();
@@ -466,6 +514,7 @@ void test_hub_has_priority_over_scheduler_when_both_ready() {
     TEST_ASSERT_TRUE(sawScheduleAfterHub);
 }
 
+// TEMP_UP from hub can tune target setpoint even when heater power is off.
 void test_hub_temp_up_changes_target_without_transmit_when_power_off() {
     IRSender sender;
     sender.begin();
@@ -493,6 +542,7 @@ void test_hub_temp_up_changes_target_without_transmit_when_power_off() {
     TEST_ASSERT_EQUAL(Command::TEMP_UP, only.command);
 }
 
+// Failed transmit path currently does not create COMMAND_DROPPED retries.
 void test_retrofit_no_retry_drop_logic_on_failed_transmit() {
     IRSender sender;
     sender.begin();
@@ -531,6 +581,7 @@ void test_retrofit_no_retry_drop_logic_on_failed_transmit() {
     }
 }
 
+// Slow heating should make adaptive tuning more aggressive.
 void test_adaptive_tuning_increases_aggressiveness_when_heating_is_slow() {
     AdaptiveThermostatTuning adaptive;
     const ThermostatTuning base{1.6F, 0.02F, 3.0F, 3};
@@ -545,6 +596,7 @@ void test_adaptive_tuning_increases_aggressiveness_when_heating_is_slow() {
     TEST_ASSERT_TRUE(out.maxSteps >= base.maxSteps);
 }
 
+// Fast heating should make adaptive tuning less aggressive.
 void test_adaptive_tuning_decreases_aggressiveness_when_heating_is_fast() {
     AdaptiveThermostatTuning adaptive;
     const ThermostatTuning base{1.6F, 0.02F, 3.0F, 3};
@@ -559,6 +611,7 @@ void test_adaptive_tuning_decreases_aggressiveness_when_heating_is_fast() {
     TEST_ASSERT_TRUE(out.maxSteps <= base.maxSteps);
 }
 
+// Adaptation must wait until observation window is long enough.
 void test_adaptive_tuning_does_not_adjust_before_window() {
     AdaptiveThermostatTuning adaptive;
     const ThermostatTuning base{1.6F, 0.02F, 3.0F, 3};
@@ -573,6 +626,7 @@ void test_adaptive_tuning_does_not_adjust_before_window() {
     TEST_ASSERT_EQUAL_INT(base.maxSteps, out.maxSteps);
 }
 
+// Adaptive output must stay inside configured kp/maxSteps bounds.
 void test_adaptive_tuning_respects_kp_and_step_bounds() {
     AdaptiveThermostatTuning::Config config;
     config.fastBounds.kpMin = 1.55F;
@@ -594,6 +648,7 @@ void test_adaptive_tuning_respects_kp_and_step_bounds() {
     TEST_ASSERT_TRUE(out.maxSteps >= config.fastBounds.maxStepsMin);
 }
 
+// Negative control steps are treated as valid signal for adaptation direction.
 void test_adaptive_tuning_uses_negative_steps_for_adaptation() {
     AdaptiveThermostatTuning adaptive;
     const ThermostatTuning base{1.6F, 0.02F, 3.0F, 3};
@@ -610,6 +665,7 @@ void test_adaptive_tuning_uses_negative_steps_for_adaptation() {
     TEST_ASSERT_TRUE(out.maxSteps <= base.maxSteps);
 }
 
+// AI recommendation is advisory-only and constrained to safe ranges.
 void test_hub_ai_recommendation_is_advisory_only_and_clamped() {
     HubAiInsights insights;
 
@@ -629,6 +685,7 @@ void test_hub_ai_recommendation_is_advisory_only_and_clamped() {
     TEST_ASSERT_TRUE(recommendation.kiScale >= 0.9F && recommendation.kiScale <= 1.1F);
 }
 
+// Overshoot detector should trigger after repeated above-target spikes.
 void test_hub_ai_detects_repeated_overshoot() {
     HubAiInsights model;
 
@@ -645,6 +702,7 @@ void test_hub_ai_detects_repeated_overshoot() {
     TEST_ASSERT_TRUE(model.insights().overshoot_detected);
 }
 
+// Sharp temperature drop after heat-up intent should flag likely window-open pattern.
 void test_hub_ai_detects_window_open_drop() {
     HubAiInsights model;
     HubAiInsights::LogEntry e{};
@@ -664,6 +722,44 @@ void test_hub_ai_detects_window_open_drop() {
     TEST_ASSERT_TRUE(model.insights().window_open_detected);
 }
 
+// Synthetic strong-vs-weak profiles should produce different learned heating rates.
+void test_hub_ai_learns_different_rates_for_different_profiles() {
+    HubAiInsights weakModel;
+    HubAiInsights strongModel;
+
+    // 1-minute samples over 24 minutes.
+    feedSyntheticHeaterProfile(weakModel, 20.0F, 24.0F, 0.01F, 0.005F, 60000U, 24U);
+    feedSyntheticHeaterProfile(strongModel, 20.0F, 24.0F, 0.20F, 0.01F, 60000U, 24U);
+
+    const float weakRate = weakModel.insights().heating_rate;
+    const float strongRate = strongModel.insights().heating_rate;
+
+    TEST_ASSERT_TRUE(strongRate > weakRate);
+}
+
+// Flat constant telemetry should not fake thermal learning signals.
+void test_hub_ai_constant_data_does_not_fake_learning() {
+    HubAiInsights model;
+    HubAiInsights::LogEntry e{};
+    e.timestampMs = 0;
+    e.roomTemperatureC = 22.0F;
+    e.targetTemperatureC = 22.0F;
+    e.commandSent = HubAiInsights::CommandSent::NONE;
+    e.mode = HubAiInsights::Mode::COMFORT;
+    e.pidOutput = 0.0F;
+
+    for (size_t i = 0; i < 40; ++i) {
+        model.ingest(e);
+        e.timestampMs += 60000ULL;
+    }
+
+    TEST_ASSERT_FLOAT_WITHIN(0.00001F, 0.0F, model.insights().heating_rate);
+    TEST_ASSERT_FLOAT_WITHIN(0.00001F, 0.0F, model.insights().cooling_rate);
+    TEST_ASSERT_FALSE(model.insights().hardware_failure_detected);
+    TEST_ASSERT_TRUE(model.insights().confidence_score <= 0.35F);
+}
+
+// Repeated weak heating should flag hardware failure and later clear on recovery.
 void test_hub_ai_hardware_failure_detection_and_recovery() {
     HubAiInsights model;
     HubAiInsights::LogEntry e{};
@@ -695,6 +791,7 @@ void test_hub_ai_hardware_failure_detection_and_recovery() {
     TEST_ASSERT_FALSE(model.insights().hardware_failure_detected);
 }
 
+// ECO mode recommendation should bias to lower kp than COMFORT mode.
 void test_hub_ai_eco_kp_is_lower_than_comfort() {
     HubAiInsights model;
 
@@ -748,6 +845,8 @@ int main(int, char**) {
     RUN_TEST(test_hub_ai_recommendation_is_advisory_only_and_clamped);
     RUN_TEST(test_hub_ai_detects_repeated_overshoot);
     RUN_TEST(test_hub_ai_detects_window_open_drop);
+    RUN_TEST(test_hub_ai_learns_different_rates_for_different_profiles);
+    RUN_TEST(test_hub_ai_constant_data_does_not_fake_learning);
     RUN_TEST(test_hub_ai_hardware_failure_detection_and_recovery);
     RUN_TEST(test_hub_ai_eco_kp_is_lower_than_comfort);
 
