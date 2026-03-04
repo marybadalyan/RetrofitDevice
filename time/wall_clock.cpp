@@ -29,13 +29,14 @@ void NtpClock::beginNtp(const char* timezone,
                         const char* ntp2,
                         const char* ntp3) {
 #if __has_include(<Arduino.h>) && __has_include(<time.h>)
+// configures timezone and NTP servers for underlying system time functions.
     if (timezone != nullptr) {
         setenv("TZ", timezone, 1);
         tzset();
     }
 
     if (ntp1 != nullptr) {
-        configTime(0, 0, ntp1, ntp2, ntp3);
+        configTime(0, 0, ntp1, ntp2, ntp3); //offsets are 0 because timezone is handled via TZ instead.
         ntpEnabled_ = true;
     }
 #else
