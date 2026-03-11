@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heater Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#f5f0eb;--surface:#faf7f4;--card:#ffffff;--border:#e8e0d6;
+    --text:#2a1f14;--muted:#9c8b7a;--accent:#c45c1a;--accent2:#e8834a;
+    --green:#4a8c5c;--cold:#6ea8c8;
+    --serif:'DM Serif Display',serif;--mono:'DM Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--mono);min-height:100vh;overflow-x:hidden;}
+  body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");pointer-events:none;z-index:999;}
+
+  header{padding:24px 32px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:var(--surface);}
+  .logo{font-family:var(--serif);font-size:1.5rem;letter-spacing:-0.5px;}
+  .logo span{color:var(--accent);font-style:italic;}
+  .status-pill{display:flex;align-items:center;gap:8px;font-size:0.68rem;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background 0.4s;}
+  .dot.online{background:var(--green);box-shadow:0 0 6px var(--green);animation:pdot 2s infinite;}
+  @keyframes pdot{0%,100%{opacity:1}50%{opacity:0.5}}
+
+  nav{display:flex;gap:2px;padding:14px 32px 0;background:var(--surface);border-bottom:1px solid var(--border);}
+  .tab{padding:10px 20px;font-family:var(--mono);font-size:0.7rem;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;transition:all .2s;margin-bottom:-1px;}
+  .tab:hover{color:var(--text);}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+
+  .page{display:none;padding:28px 32px;animation:fadeUp .3s ease;}
+  .page.active{display:block;}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  @media(max-width:680px){.g2,.g3,.g4{grid-template-columns:1fr;}}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px;position:relative;overflow:hidden;}
+  .card-label{font-size:0.63rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:14px;}
+
+  /* TEMP HERO */
+  .temp-hero{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:32px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:20px;overflow:hidden;position:relative;}
+  .temp-hero::after{content:'';position:absolute;right:-50px;top:-50px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(196,92,26,.07) 0%,transparent 70%);pointer-events:none;}
+  .big-temp{font-family:var(--serif);font-size:4.8rem;line-height:1;letter-spacing:-3px;}
+  .big-temp sup{font-size:2rem;color:var(--muted);vertical-align:super;letter-spacing:0;}
+  .temp-label{font-size:0.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-top:6px;}
+  .pid-mini{display:flex;flex-wrap:wrap;gap:10px;font-size:0.7rem;color:var(--muted);margin-top:10px;}
+  .pid-mini b{color:var(--accent);}
+  .target-side{text-align:right;}
+  .target-label{font-size:0.63rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  .target-big{font-family:var(--serif);font-size:2.8rem;color:var(--accent);letter-spacing:-1px;}
+  .mode-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 12px;border-radius:20px;font-size:0.63rem;letter-spacing:1.5px;text-transform:uppercase;font-weight:500;margin-top:8px;}
+  .mb-fast{background:rgba(196,92,26,.1);color:var(--accent);border:1px solid rgba(196,92,26,.25);}
+  .mb-eco{background:rgba(74,140,92,.1);color:var(--green);border:1px solid rgba(74,140,92,.25);}
+
+  /* POWER BTN */
+  .power-wrap{display:flex;flex-direction:column;align-items:center;gap:14px;padding:8px 0;}
+  .power-btn{width:76px;height:76px;border-radius:50%;border:2px solid var(--border);background:var(--surface);cursor:pointer;font-size:1.7rem;transition:all .3s;position:relative;}
+  .power-btn::after{content:'';position:absolute;inset:-5px;border-radius:50%;border:2px solid transparent;transition:border-color .3s;}
+  .power-btn.on{background:var(--accent);border-color:var(--accent);box-shadow:0 0 24px rgba(196,92,26,.35);color:#fff;}
+  .power-btn.on::after{border-color:rgba(196,92,26,.3);}
+  .power-lbl{font-size:0.63rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);}
+  .power-lbl.on{color:var(--accent);}
+
+  /* STEPPER */
+  .stepper{display:flex;align-items:center;justify-content:center;gap:18px;margin-top:6px;}
+  .step-btn{width:46px;height:46px;border-radius:12px;border:1px solid var(--border);background:var(--surface);font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text);transition:all .15s;}
+  .step-btn:hover{background:var(--accent);border-color:var(--accent);color:#fff;transform:scale(1.05);}
+  .step-btn:active{transform:scale(.97);}
+  .step-val{font-family:var(--serif);font-size:2.2rem;min-width:55px;text-align:center;}
+
+  .chart-wrap{position:relative;height:200px;margin-top:6px;}
+
+  /* SCHEDULE */
+  .sched-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:20px;}
+  @media(max-width:680px){.sched-grid{grid-template-columns:1fr;}}
+  .day-col{display:flex;flex-direction:column;gap:5px;}
+  .day-hd{font-size:0.62rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);text-align:center;padding:7px 0;}
+  .slot{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:9px 6px;text-align:center;transition:all .2s;}
+  .slot.active{background:rgba(196,92,26,.07);border-color:rgba(196,92,26,.35);}
+  .slot-time{font-size:0.58rem;color:var(--muted);letter-spacing:1px;}
+  .slot-temp{font-family:var(--serif);font-size:1.05rem;margin-top:2px;}
+  .slot-temp.heat{color:var(--accent);}
+  .slot-temp.off{color:var(--muted);font-size:0.65rem;font-family:var(--mono);}
+
+  .entry{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--border);}
+  .entry:last-of-type{border-bottom:none;}
+  .f-input,.f-select{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 11px;font-family:var(--mono);font-size:0.8rem;color:var(--text);outline:none;transition:border-color .2s;}
+  .f-input:focus,.f-select:focus{border-color:var(--accent);}
+  .f-temp{width:68px;text-align:center;}
+  .rm-btn{width:27px;height:27px;border-radius:7px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-size:.85rem;display:flex;align-items:center;justify-content:center;transition:all .2s;}
+  .rm-btn:hover{background:#fee2e2;border-color:#fca5a5;color:#dc2626;}
+
+  .btn{padding:9px 18px;border-radius:10px;border:1px solid var(--border);font-family:var(--mono);font-size:0.7rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .2s;font-weight:500;}
+  .btn-p{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .btn-p:hover{background:#a84a12;transform:translateY(-1px);box-shadow:0 4px 12px rgba(196,92,26,.3);}
+  .btn-s{background:var(--surface);color:var(--text);}
+  .btn-s:hover{border-color:var(--accent);color:var(--accent);}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
+
+  /* CONFIG */
+  .cfg-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px;margin-bottom:16px;}
+  .cfg-card h3{font-family:var(--serif);font-size:1.1rem;margin-bottom:14px;}
+  .field{margin-bottom:11px;}
+  .field label{display:block;font-size:0.62rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:5px;}
+  .field input,.field select{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:9px 13px;font-family:var(--mono);font-size:0.8rem;color:var(--text);outline:none;transition:border-color .2s;}
+  .field input:focus,.field select:focus{border-color:var(--accent);}
+  .field input[type=range]{padding:0;accent-color:var(--accent);cursor:pointer;}
+  .rv{color:var(--accent);font-weight:500;font-family:var(--serif);}
+
+  /* STATS */
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;}
+  .stat-val{font-family:var(--serif);font-size:1.8rem;}
+  .stat-lbl{font-size:0.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-top:3px;}
+
+  .toast{position:fixed;bottom:22px;right:22px;background:var(--text);color:var(--bg);padding:11px 18px;border-radius:10px;font-size:0.77rem;opacity:0;transform:translateY(8px);transition:all .3s;z-index:1001;pointer-events:none;}
+  .toast.show{opacity:1;transform:translateY(0);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">thermo<span>hub</span></div>
+  <div class="status-pill">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">connecting</span>
+  </div>
+</header>
+
+<nav>
+  <button class="tab active" onclick="showPage('control',this)">Control</button>
+  <button class="tab" onclick="showPage('schedule',this)">Schedule</button>
+  <button class="tab" onclick="showPage('history',this)">History</button>
+  <button class="tab" onclick="showPage('config',this)">Config</button>
+</nav>
+
+<!-- CONTROL -->
+<div class="page active" id="page-control">
+  <div class="temp-hero">
+    <div>
+      <div class="big-temp" id="roomTempDisp">—<sup>°C</sup></div>
+      <div class="temp-label">Room temperature</div>
+      <div class="pid-mini" id="pidRow">
+        <span>P: <b id="pP">—</b></span>
+        <span>I: <b id="pI">—</b></span>
+        <span>D: <b id="pD">—</b></span>
+        <span>Steps: <b id="pS">—</b></span>
+      </div>
+    </div>
+    <div id="modeDisp"></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-around;padding:28px;gap:20px">
+    <div class="power-wrap">
+      <button class="power-btn" id="powerBtn" onclick="togglePower()">⏻</button>
+      <div class="power-lbl" id="powerLbl">OFF</div>
+    </div>
+    <div style="width:1px;height:80px;background:var(--border)"></div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+      <div class="target-label">Target</div>
+      <div style="display:flex;align-items:center;gap:4px">
+        <input id="targetInput" type="number" value="21" min="10" max="35" step="0.5"
+          onchange="setTarget(parseFloat(this.value))"
+          style="width:80px;font-family:var(--serif);font-size:2.4rem;font-weight:400;
+                 color:var(--accent);background:transparent;border:none;border-bottom:2px solid var(--accent);
+                 outline:none;text-align:right;letter-spacing:-1px;padding:0;-moz-appearance:textfield;">
+        <span style="font-family:var(--serif);font-size:2.4rem;color:var(--muted);letter-spacing:-1px">°C</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Heat over time</div>
+    <div class="chart-wrap"><canvas id="liveChart"></canvas></div>
+  </div>
+</div>
+
+<!-- SCHEDULE -->
+<div class="page" id="page-schedule">
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-label">Schedule entries</div>
+    <div id="schedEntries"></div>
+    <div class="btn-row">
+      <button class="btn btn-s" onclick="addEntry()">+ Add slot</button>
+      <button class="btn btn-p" onclick="saveSchedule()">Save schedule</button>
+      <button class="btn btn-s" onclick="autoGenerate()">✦ Auto-generate from history</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label">Weekly overview</div>
+    <div class="sched-grid" id="schedGrid"></div>
+  </div>
+</div>
+
+<!-- HISTORY -->
+<div class="page" id="page-history">
+  <div class="g4" style="margin-bottom:16px" id="statsRow">
+    <div class="stat"><div class="stat-val" id="sAvg">—</div><div class="stat-lbl">Avg Temp</div></div>
+    <div class="stat"><div class="stat-val" id="sMin">—</div><div class="stat-lbl">Min Today</div></div>
+    <div class="stat"><div class="stat-val" id="sMax">—</div><div class="stat-lbl">Max Today</div></div>
+    <div class="stat"><div class="stat-val" id="sCycles">—</div><div class="stat-lbl">PID Cycles</div></div>
+  </div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-label">Temperature — last 24h</div>
+    <div class="chart-wrap" style="height:250px"><canvas id="histChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Heater calibration</div>
+    <div id="calibInfo" style="font-size:0.8rem;color:var(--muted);line-height:1.9;margin-top:6px">
+      Collecting data… will appear after first full day of operation.
+    </div>
+  </div>
+</div>
+
+<!-- CONFIG -->
+<div class="page" id="page-config">
+  <div class="g2">
+    <div>
+      <div class="cfg-card">
+        <h3>Pin Configuration</h3>
+        <div class="field"><label>IR Transmit Pin</label><input type="number" id="cIrTx" placeholder="e.g. 4" min="0" max="39"></div>
+        <div class="field"><label>IR Receive Pin</label><input type="number" id="cIrRx" placeholder="e.g. 15" min="0" max="39"></div>
+        <div class="field"><label>LED Red Pin</label><input type="number" id="cLedR" placeholder="e.g. 25" min="0" max="39"></div>
+        <div class="field"><label>LED Green Pin</label><input type="number" id="cLedG" placeholder="e.g. 26" min="0" max="39"></div>
+        <div class="field"><label>LED Blue Pin</label><input type="number" id="cLedB" placeholder="e.g. 27" min="0" max="39"></div>
+      </div>
+      <div class="cfg-card">
+        <h3>WiFi</h3>
+        <div class="field"><label>SSID</label><input type="text" id="cSsid" placeholder="Network name"></div>
+        <div class="field"><label>Password</label><input type="password" id="cPass" placeholder="••••••••"></div>
+      </div>
+    </div>
+    <div>
+      <div class="cfg-card">
+        <h3>PID Tuning</h3>
+        <div class="field"><label>Mode</label><select id="cMode"><option value="FAST">Fast</option><option value="ECO">Eco</option></select></div>
+        <div class="field"><label>Kp <span class="rv" id="rvKp">1.6</span></label><input type="range" id="cKp" min="0.1" max="5" step="0.1" value="1.6" oninput="rv('rvKp',this.value)"></div>
+        <div class="field"><label>Ki <span class="rv" id="rvKi">0.020</span></label><input type="range" id="cKi" min="0.001" max="0.2" step="0.001" value="0.02" oninput="rv('rvKi',parseFloat(this.value).toFixed(3))"></div>
+        <div class="field"><label>Kd <span class="rv" id="rvKd">3.0</span></label><input type="range" id="cKd" min="0" max="10" step="0.1" value="3.0" oninput="rv('rvKd',this.value)"></div>
+        <div class="field"><label>Max Steps <span class="rv" id="rvMs">3</span></label><input type="range" id="cMs" min="1" max="6" step="1" value="3" oninput="rv('rvMs',this.value)"></div>
+        <div class="field"><label>Control Interval (s) <span class="rv" id="rvInt">45</span></label><input type="range" id="cInt" min="10" max="120" step="5" value="45" oninput="rv('rvInt',this.value)"></div>
+        <div class="field"><label>Deadband °C <span class="rv" id="rvDb">0.3</span></label><input type="range" id="cDb" min="0.1" max="2.0" step="0.1" value="0.3" oninput="rv('rvDb',parseFloat(this.value).toFixed(1))"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-p" onclick="saveConfig()">Save to ESP32</button>
+        <button class="btn btn-s" onclick="loadConfig()">Reload</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const HUB = '';  // set to 'http://192.168.x.x:5000' if running separately
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const SLOTS = ['06:00','09:00','12:00','15:00','18:00','21:00','23:00'];
+
+let schedEntries = [];
+let liveData = {room:[],target:[],labels:[]};
+let liveChart = null, histChart = null;
+let targetTemp = 21.0;
+let st = {power:false, roomTemp:null, targetTemp:20, mode:'FAST', pid:{p:0,i:0,d:0,steps:0}};
+
+// ── helpers ──
+function rv(id, v){ document.getElementById(id).textContent = v; }
+function toast(msg, d=2500){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),d);
+}
+async function api(path, method='GET', body=null){
+  try{
+    const r=await fetch(HUB+path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):null});
+    return await r.json();
+  }catch(e){return null;}
+}
+function showPage(name, tabEl){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  tabEl.classList.add('active');
+  if(name==='history') loadHistory();
+  if(name==='config')  loadConfig();
+}
+
+// ── polling ──
+async function poll(){
+  const d=await api('/api/status');
+  const dot=document.getElementById('statusDot');
+  const txt=document.getElementById('statusText');
+  if(!d){dot.className='dot';txt.textContent='offline';return;}
+  dot.className='dot online';txt.textContent='online';
+  if(d.room_temp  !==undefined) st.roomTemp   = d.room_temp;
+  if(d.target_temp!==undefined) st.targetTemp = d.target_temp;
+  if(d.power      !==undefined) st.power      = d.power;
+  if(d.mode       !==undefined) st.mode       = d.mode;
+  if(d.pid        !==undefined) st.pid        = d.pid;
+  updateUI();
+  pushLivePoint();
+}
+
+function updateUI(){
+  const rt=st.roomTemp;
+  document.getElementById('roomTempDisp').innerHTML = rt!==null?`${rt.toFixed(1)}<sup>°C</sup>`:`—<sup>°C</sup>`;
+  if(st.targetTemp!==null){ targetTemp=st.targetTemp; }
+  document.getElementById('targetInput').value = targetTemp.toFixed(1);
+  if(document.getElementById('modeDispLarge')) document.getElementById('modeDispLarge').innerHTML = `<span class="mode-badge mb-${(st.mode||'fast').toLowerCase()}">${st.mode||'—'}</span>`;
+  const srt = document.getElementById('statusRoomTemp');
+  if(srt) srt.textContent = st.roomTemp!==null ? st.roomTemp.toFixed(1) : '—';
+  const sp = document.getElementById('statusPower');
+  if(sp){ sp.textContent = st.power ? 'ON' : 'OFF'; sp.style.color = st.power ? 'var(--green)' : 'var(--muted)'; }
+  document.getElementById('pP').textContent = st.pid.p?.toFixed(2)??'—';
+  document.getElementById('pI').textContent = st.pid.i?.toFixed(3)??'—';
+  document.getElementById('pD').textContent = st.pid.d?.toFixed(2)??'—';
+  document.getElementById('pS').textContent = st.pid.steps??'—';
+  const btn=document.getElementById('powerBtn');
+  const lbl=document.getElementById('powerLbl');
+  btn.className='power-btn'+(st.power?' on':'');
+  lbl.className='power-lbl'+(st.power?' on':'');
+  lbl.textContent=st.power?'ON':'OFF';
+  document.getElementById('modeDisp').innerHTML=`<span class="mode-badge mb-${st.mode.toLowerCase()}">${st.mode}</span>`;
+}
+
+// ── controls ──
+async function togglePower(){
+  // Flip UI immediately — don't wait for hub response
+  st.power=!st.power;
+  updateUI();
+  const cmd=st.power?'on':'off';
+  const r=await api('/api/command','POST',{command:cmd});
+  if(r){
+    toast(cmd.toUpperCase()+' sent');
+  } else {
+    // Revert if hub unreachable
+    st.power=!st.power;
+    updateUI();
+    toast('Hub offline — not sent');
+  }
+}
+async function setTarget(val){
+  targetTemp = Math.round(Math.max(10, Math.min(35, val)) * 2) / 2;
+  document.getElementById('targetInput').value = targetTemp.toFixed(1);
+  const r = await api('/api/target','POST',{target_temp: targetTemp});
+  if(r) toast('Target → '+targetTemp.toFixed(1)+'°C');
+  else  toast('Hub offline — target set locally');
+}
+
+// ── live chart ──
+function initLiveChart(){
+  const ctx=document.getElementById('liveChart').getContext('2d');
+  const base={borderWidth:2,pointRadius:2,tension:0.4};
+  liveChart=new Chart(ctx,{type:'line',data:{labels:[],datasets:[
+    {...base,label:'Room',data:[],borderColor:'#c45c1a',backgroundColor:'rgba(196,92,26,0.07)',fill:true},
+    {...base,label:'Target',data:[],borderColor:'#6ea8c8',borderDash:[4,3],pointRadius:0}
+  ]},options:{
+    responsive:true,maintainAspectRatio:false,animation:{duration:200},
+    plugins:{legend:{labels:{font:{family:'DM Mono',size:11},color:'#9c8b7a'}}},
+    scales:{x:{ticks:{font:{family:'DM Mono',size:10},color:'#9c8b7a'},grid:{color:'#e8e0d6'}},
+            y:{ticks:{font:{family:'DM Mono',size:10},color:'#9c8b7a'},grid:{color:'#e8e0d6'}}}
+  }});
+}
+function pushLivePoint(){
+  const t=new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  if(liveData.labels.at(-1)===t) return;
+  liveData.labels.push(t);
+  liveData.room.push(st.roomTemp);
+  liveData.target.push(st.targetTemp);
+  if(liveData.labels.length>50){liveData.labels.shift();liveData.room.shift();liveData.target.shift();}
+  liveChart.data.labels=[...liveData.labels];
+  liveChart.data.datasets[0].data=[...liveData.room];
+  liveChart.data.datasets[1].data=[...liveData.target];
+  liveChart.update('none');
+}
+
+// ── history ──
+async function loadHistory(){
+  const d=await api('/api/history?hours=24');
+  if(!d||!d.readings) return;
+  const T=d.readings.map(r=>r.room_temp), L=d.readings.map(r=>r.ts.slice(11,16));
+  document.getElementById('sAvg').textContent  = (T.reduce((a,b)=>a+b,0)/T.length).toFixed(1)+'°';
+  document.getElementById('sMin').textContent  = Math.min(...T).toFixed(1)+'°';
+  document.getElementById('sMax').textContent  = Math.max(...T).toFixed(1)+'°';
+  document.getElementById('sCycles').textContent = d.pid_cycles??'—';
+  if(d.calibration){
+    const c=d.calibration;
+    document.getElementById('calibInfo').innerHTML=
+      `Warm-up time: <strong style="color:var(--accent)">${c.warmup_minutes} min</strong><br>
+       Responsiveness: <strong style="color:var(--accent)">${c.responsiveness}</strong><br>
+       Avg integral at setpoint: <strong style="color:var(--accent)">${c.avg_integral?.toFixed(2)}</strong>`;
+  }
+  const ctx=document.getElementById('histChart').getContext('2d');
+  if(histChart) histChart.destroy();
+  histChart=new Chart(ctx,{type:'line',data:{labels:L,datasets:[{label:'Room Temp',data:T,
+    borderColor:'#c45c1a',backgroundColor:'rgba(196,92,26,0.07)',borderWidth:2,pointRadius:0,tension:0.3,fill:true}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{ticks:{maxTicksLimit:12,font:{family:'DM Mono',size:10},color:'#9c8b7a'},grid:{color:'#e8e0d6'}},
+              y:{ticks:{font:{family:'DM Mono',size:10},color:'#9c8b7a'},grid:{color:'#e8e0d6'}}}}});
+}
+
+// ── schedule ──
+function addEntry(day='Mon', time='07:00', type='temp', temp=21, command='on'){
+  schedEntries.push({day, time, type, temp, command});
+  renderEntries();
+}
+function removeEntry(i){schedEntries.splice(i,1);renderEntries();}
+
+function renderEntries(){
+  document.getElementById('schedEntries').innerHTML=schedEntries.map((e,i)=>`
+    <div class="entry" style="grid-template-columns:auto auto 120px auto auto;gap:8px">
+      <select class="f-select" onchange="schedEntries[${i}].day=this.value;renderGrid()">
+        ${DAYS.map(d=>`<option ${d===e.day?'selected':''}>${d}</option>`).join('')}
+      </select>
+      <input type="time" class="f-input" value="${e.time}"
+        onchange="schedEntries[${i}].time=this.value;renderGrid()">
+      <select class="f-select" style="width:120px;flex-shrink:0" onchange="schedEntries[${i}].type=this.value;renderEntries()">
+        <option value="temp"    ${e.type==='temp'   ?'selected':''}>🌡 Temp</option>
+        <option value="command" ${e.type==='command'?'selected':''}>⚡ CMD</option>
+      </select>
+      ${e.type==='command'
+        ? `<select class="f-select" style="width:80px" onchange="schedEntries[${i}].command=this.value;renderGrid()">
+             <option value="on"  ${e.command==='on' ?'selected':''}>ON</option>
+             <option value="off" ${e.command==='off'?'selected':''}>OFF</option>
+           </select>`
+        : `<input type="number" class="f-input f-temp" value="${e.temp??21}" min="10" max="30" step="0.5"
+             onchange="schedEntries[${i}].temp=parseFloat(this.value);renderGrid()">`
+      }
+      <button class="rm-btn" onclick="removeEntry(${i})">✕</button>
+    </div>`).join('');
+  renderGrid();
+}
+
+function renderGrid(){
+  document.getElementById('schedGrid').innerHTML=DAYS.map(day=>{
+    const de=schedEntries.filter(e=>e.day===day).sort((a,b)=>a.time.localeCompare(b.time));
+    return`<div class="day-col">
+      <div class="day-hd">${day}</div>
+      ${SLOTS.map(s=>{
+        const m=de.slice().reverse().find(e=>e.time<=s);
+        if(!m) return`<div class="slot"><div class="slot-time">${s}</div><div class="slot-temp off">off</div></div>`;
+        if(m.type==='command'){
+          const isOn=m.command==='on';
+          return`<div class="slot active" style="border-color:${isOn?'rgba(74,140,92,.4)':'rgba(196,92,26,.4)'}">
+            <div class="slot-time">${s}</div>
+            <div class="slot-temp" style="color:${isOn?'var(--green)':'var(--accent)'}">
+              ${isOn?'ON':'OFF'}
+            </div></div>`;
+        }
+        return`<div class="slot active">
+          <div class="slot-time">${s}</div>
+          <div class="slot-temp heat">${m.temp}°</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+async function saveSchedule(){
+  const r=await api('/api/schedule','POST',{schedule:schedEntries});
+  r?toast('Schedule saved ✓'):toast('Save failed');
+}
+async function autoGenerate(){
+  toast('Analysing usage history…',4000);
+  const r=await api('/api/schedule/generate','POST');
+  if(r?.schedule){schedEntries=r.schedule;renderEntries();toast('Schedule generated ✓');}
+  else toast('Need more history data first');
+}
+async function loadSched(){
+  const r=await api('/api/schedule');
+  if(r?.schedule){schedEntries=r.schedule;}
+  else{
+    schedEntries=[
+      {day:'Mon',time:'07:00',type:'command',command:'on',  temp:null},
+      {day:'Mon',time:'22:00',type:'command',command:'off', temp:null},
+      {day:'Tue',time:'07:00',type:'command',command:'on',  temp:null},
+      {day:'Tue',time:'22:00',type:'command',command:'off', temp:null},
+      {day:'Wed',time:'07:00',type:'command',command:'on',  temp:null},
+      {day:'Wed',time:'22:00',type:'command',command:'off', temp:null},
+      {day:'Thu',time:'07:00',type:'command',command:'on',  temp:null},
+      {day:'Thu',time:'22:00',type:'command',command:'off', temp:null},
+      {day:'Fri',time:'07:00',type:'command',command:'on',  temp:null},
+      {day:'Fri',time:'22:00',type:'command',command:'off', temp:null},
+      {day:'Sat',time:'09:00',type:'command',command:'on',  temp:null},
+      {day:'Sun',time:'09:00',type:'command',command:'on',  temp:null},
+    ];
+  }
+  renderEntries();
+}
+
+// ── config ──
+async function loadConfig(){
+  const r=await api('/api/config');
+  if(!r)return;
+  const s=(id,v)=>{const el=document.getElementById(id);if(el&&v!==undefined)el.value=v;};
+  s('cIrTx',r.ir_tx_pin);s('cIrRx',r.ir_rx_pin);
+  s('cLedR',r.led_red_pin);s('cLedG',r.led_green_pin);s('cLedB',r.led_blue_pin);
+  s('cSsid',r.wifi_ssid);s('cMode',r.pid_mode);
+  if(r.pid_kp!==undefined){s('cKp',r.pid_kp);rv('rvKp',r.pid_kp);}
+  if(r.pid_ki!==undefined){s('cKi',r.pid_ki);rv('rvKi',parseFloat(r.pid_ki).toFixed(3));}
+  if(r.pid_kd!==undefined){s('cKd',r.pid_kd);rv('rvKd',r.pid_kd);}
+  if(r.pid_max_steps!==undefined){s('cMs',r.pid_max_steps);rv('rvMs',r.pid_max_steps);}
+  if(r.control_interval_s!==undefined){s('cInt',r.control_interval_s);rv('rvInt',r.control_interval_s);}
+  if(r.deadband_c!==undefined){s('cDb',r.deadband_c);rv('rvDb',parseFloat(r.deadband_c).toFixed(1));}
+}
+async function saveConfig(){
+  const g=id=>document.getElementById(id).value;
+  const r=await api('/api/config','POST',{
+    ir_tx_pin:parseInt(g('cIrTx'))||null, ir_rx_pin:parseInt(g('cIrRx'))||null,
+    led_red_pin:parseInt(g('cLedR'))||null, led_green_pin:parseInt(g('cLedG'))||null, led_blue_pin:parseInt(g('cLedB'))||null,
+    wifi_ssid:g('cSsid'), wifi_password:g('cPass')||undefined,
+    pid_mode:g('cMode'), pid_kp:parseFloat(g('cKp')), pid_ki:parseFloat(g('cKi')), pid_kd:parseFloat(g('cKd')),
+    pid_max_steps:parseInt(g('cMs')), control_interval_s:parseInt(g('cInt')), deadband_c:parseFloat(g('cDb')),
+  });
+  r?toast('Config saved to ESP32 ✓'):toast('Save failed');
+}
+
+// ── boot ──
+initLiveChart();
+loadSched();
+poll();
+setInterval(poll, 5000);
+</script>
+</body>
+</html>

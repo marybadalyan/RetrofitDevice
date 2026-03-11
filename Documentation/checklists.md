@@ -17,7 +17,11 @@
 
 **TODO**
 -  Before connecting any hardware, investigate whether cross-platform testing is feasible  CI support would be a bonus.
-- remove sheduling to get a minimal configuration in no need oof refactorment ot bypassings make mocks and tests avalable to those make mockers for the ir heater and test the retrofit and vice versa 
+- remove sheduling to get a minimal configuration in no need of refactorment or bypassings make mocks and tests avalable to those make mockers for the ir heater and test the retrofit and vice versa 
+- if diag scheduling and pid , thermostat and other things are reduced to the level of what blynk offers that is scheduling through events - watch video - 
+- configure device and connect 
+- refactor considering that lynk wi;; act as a hub and this puts a limit to our possible fetures like running the ai model
+- research possiblities look for work arounds 
 
 **Hardware & Testing**
 

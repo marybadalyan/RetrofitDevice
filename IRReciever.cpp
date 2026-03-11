@@ -91,12 +91,14 @@ bool IRReceiver::decodeFrame(DecodedFrame& outFrame, const uint16_t* pulses, siz
 
     uint8_t decodedBytes[4] = {0, 0, 0, 0};
     for (int bit = 0; bit < 32; ++bit) {
+        // For bit n, its mark starts at offset n * 2 and its space ++ 1
+        // since very bit is represented by a mark followed by a space.
         const size_t markIdx = start + static_cast<size_t>(bit) * 2;
         const size_t spaceIdx = markIdx + 1;
         if (spaceIdx >= pulseCount) {
             return false;
         }
-
+        // first has to be a mark 
         if (!approx(pulses[markIdx], kBitMarkUs)) {
             return false;
         }
