@@ -8,6 +8,7 @@
 class HubReceiver {
 public:
     bool pushMockCommand(Command command);
+    bool push(Command command) { return pushMockCommand(command); }  // used by HubClient
     bool poll(Command& outCommand);
 
 private:

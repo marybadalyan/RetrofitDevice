@@ -10,6 +10,7 @@ bool HubReceiver::pushMockCommand(Command command) {
     return true;
 }
 
+
 bool HubReceiver::poll(Command& outCommand) {
     if (count_ == 0) {
         return false;

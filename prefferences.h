@@ -2,15 +2,15 @@
 
 #include <cstdint>
 
-constexpr int kIrTxPin = 4; // tx transmit
-constexpr int kIrRxPin = 15; // rx recieve 
-constexpr int kStatusLedRedPin = 18;
-constexpr int kStatusLedGreenPin = 19;
-constexpr int kStatusLedBluePin = 21;
-constexpr bool kStatusLedEnabled = true;
-constexpr uint8_t kIrPwmChannel = 0;
-constexpr uint32_t kIrCarrierFreqHz = 38000;
-constexpr uint8_t kIrPwmResolutionBits = 8;
+// constexpr int kIrTxPin = 4; // tx transmit
+// constexpr int kIrRxPin = 15; // rx recieve 
+// constexpr int kStatusLedRedPin = 18;
+// constexpr int kStatusLedGreenPin = 19;
+// constexpr int kStatusLedBluePin = 21;
+// constexpr bool kStatusLedEnabled = true;
+// constexpr uint8_t kIrPwmChannel = 0;
+// constexpr uint32_t kIrCarrierFreqHz = 38000;
+// constexpr uint8_t kIrPwmResolutionBits = 8;
 
 // NEC protocol settings
 constexpr uint16_t kNecDeviceAddress = 0x00FF;
@@ -19,7 +19,7 @@ constexpr uint8_t kNecCommandOff = 0x02;
 constexpr uint8_t kNecCommandTempUp = 0x03;
 constexpr uint8_t kNecCommandTempDown = 0x04;
 
-constexpr bool kSchedulerEnabled = true;
+constexpr bool kSchedulerEnabled = false;
 constexpr float kDefaultTargetTemperatureC = 22.0F;
 // +/- deadband around target. Example: target=22C => ON at <=21C, OFF at >=23C.
 constexpr float kThermostatHysteresisC = 1.0F;
@@ -28,8 +28,8 @@ constexpr uint8_t kDiagnosticsLogLevel = 2;
 constexpr uint32_t kHealthSnapshotIntervalMs = 10000;
 
 // Retrofit Wi-Fi + hub cloud settings.w
-constexpr const char* kWifiSsid = "";
-constexpr const char* kWifiPassword = "";
+// constexpr const char* kWifiSsid = "";
+// constexpr const char* kWifiPassword = "";
 constexpr bool kEnableIpTimezoneLookup = true;
 constexpr const char* kIpTimezoneUrl = "http://ip-api.com/json/?fields=status,timezone,offset";
 constexpr bool kEnableHubMockScheduler = false;
@@ -39,3 +39,18 @@ constexpr const char* kNtpTimezone = "UTC0";
 constexpr const char* kNtpServerPrimary = "pool.ntp.org";
 constexpr const char* kNtpServerSecondary = "time.nist.gov";
 constexpr const char* kNtpServerTertiary = "time.google.com";
+
+// ── Hub connectivity ──────────────────────────────────────────
+ 
+constexpr const char* kHubHost           = "192.168.1.x";  // ← your Mac's IP
+constexpr int         kHubPort           = 5000;
+ 
+// How often the ESP32 polls the hub for pending commands
+constexpr uint32_t    kHubCommandPollIntervalMs  = 10000U;  // 10 seconds
+ 
+// How often the ESP32 uploads telemetry to the hub
+constexpr uint32_t    kHubTelemetryIntervalMs    = 45000U;  // 45 seconds
+ 
+// HTTP timeout for all hub requests
+constexpr int         kHubHttpTimeoutMs          = 3000;
+ 

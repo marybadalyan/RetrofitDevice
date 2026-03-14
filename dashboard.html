@@ -160,15 +160,26 @@
       <div class="power-lbl" id="powerLbl">OFF</div>
     </div>
     <div style="width:1px;height:80px;background:var(--border)"></div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
       <div class="target-label">Target</div>
-      <div style="display:flex;align-items:center;gap:4px">
-        <input id="targetInput" type="number" value="21" min="10" max="35" step="0.5"
-          onchange="setTarget(parseFloat(this.value))"
-          style="width:80px;font-family:var(--serif);font-size:2.4rem;font-weight:400;
-                 color:var(--accent);background:transparent;border:none;border-bottom:2px solid var(--accent);
-                 outline:none;text-align:right;letter-spacing:-1px;padding:0;-moz-appearance:textfield;">
-        <span style="font-family:var(--serif);font-size:2.4rem;color:var(--muted);letter-spacing:-1px">°C</span>
+      <div style="display:flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+        <button onclick="stepTarget(-0.5)"
+          style="width:44px;height:56px;border:none;background:var(--surface);
+                 font-size:1.4rem;cursor:pointer;color:var(--text);
+                 border-right:1px solid var(--border);transition:background .15s;"
+          onmouseover="this.style.background='var(--accent)';this.style.color='#fff'"
+          onmouseout="this.style.background='var(--surface)';this.style.color='var(--text)'">−</button>
+        <div style="display:flex;align-items:baseline;gap:3px;padding:0 14px;background:var(--card)">
+          <span id="targetDisp2" style="font-family:var(--serif);font-size:2.2rem;
+                color:var(--accent);letter-spacing:-1px;min-width:52px;text-align:center">21.0</span>
+          <span style="font-family:var(--serif);font-size:1.5rem;color:var(--muted)">°C</span>
+        </div>
+        <button onclick="stepTarget(+0.5)"
+          style="width:44px;height:56px;border:none;background:var(--surface);
+                 font-size:1.4rem;cursor:pointer;color:var(--text);
+                 border-left:1px solid var(--border);transition:background .15s;"
+          onmouseover="this.style.background='var(--accent)';this.style.color='#fff'"
+          onmouseout="this.style.background='var(--surface)';this.style.color='var(--text)'">+</button>
       </div>
     </div>
   </div>
@@ -309,7 +320,7 @@ function updateUI(){
   const rt=st.roomTemp;
   document.getElementById('roomTempDisp').innerHTML = rt!==null?`${rt.toFixed(1)}<sup>°C</sup>`:`—<sup>°C</sup>`;
   if(st.targetTemp!==null){ targetTemp=st.targetTemp; }
-  document.getElementById('targetInput').value = targetTemp.toFixed(1);
+  const td2 = document.getElementById('targetDisp2'); if(td2) td2.textContent = targetTemp.toFixed(1);
   if(document.getElementById('modeDispLarge')) document.getElementById('modeDispLarge').innerHTML = `<span class="mode-badge mb-${(st.mode||'fast').toLowerCase()}">${st.mode||'—'}</span>`;
   const srt = document.getElementById('statusRoomTemp');
   if(srt) srt.textContent = st.roomTemp!==null ? st.roomTemp.toFixed(1) : '—';
@@ -343,12 +354,21 @@ async function togglePower(){
     toast('Hub offline — not sent');
   }
 }
-async function setTarget(val){
-  targetTemp = Math.round(Math.max(10, Math.min(35, val)) * 2) / 2;
-  document.getElementById('targetInput').value = targetTemp.toFixed(1);
-  const r = await api('/api/target','POST',{target_temp: targetTemp});
-  if(r) toast('Target → '+targetTemp.toFixed(1)+'°C');
-  else  toast('Hub offline — target set locally');
+async function stepTarget(delta){
+  const prev = targetTemp;
+  targetTemp = Math.round(Math.max(10, Math.min(35, targetTemp + delta)) * 2) / 2;
+  document.getElementById('targetDisp2').textContent = targetTemp.toFixed(1);
+
+  // Send temp_up / temp_down command — same as physical remote button
+  const cmd = delta > 0 ? 'temp_up' : 'temp_down';
+  const r = await api('/api/command','POST',{command: cmd});
+  if(r){
+    toast(delta > 0 ? 'Temp ▲ '+targetTemp.toFixed(1)+'°C' : 'Temp ▼ '+targetTemp.toFixed(1)+'°C');
+  } else {
+    targetTemp = prev; // revert
+    document.getElementById('targetDisp2').textContent = targetTemp.toFixed(1);
+    toast('Hub offline');
+  }
 }
 
 // ── live chart ──
