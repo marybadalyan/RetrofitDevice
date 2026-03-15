@@ -31,6 +31,10 @@ public:
     void submitTelemetry(const Telemetry& telemetry);
     bool hubReachable() const;
 
+    // Returns the latest scheduled target temp from the hub (0 if none received)
+    float scheduledTargetTemp() const { return scheduledTargetTemp_; }
+    void  clearScheduledTargetTemp()  { scheduledTargetTemp_ = 0.0f; }
+
 private:
     void pollCommand(const WallClockSnapshot& wallNow);
     void postTelemetry(const WallClockSnapshot& wallNow);
@@ -50,6 +54,7 @@ private:
     bool         hasPendingTelemetry_ = false;
     bool         hubReachable_        = false;
 
-    uint32_t lastCommandPollMs_  = 0;
+    uint32_t lastCommandPollMs_   = 0;
     uint32_t lastTelemetryPostMs_ = 0;
+    float    scheduledTargetTemp_ = 0.0f;
 };

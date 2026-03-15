@@ -112,8 +112,6 @@ class ConfigIn(BaseModel):
     led_red_pin:        Optional[int]   = None
     led_green_pin:      Optional[int]   = None
     led_blue_pin:       Optional[int]   = None
-    wifi_ssid:          Optional[str]   = None
-    wifi_password:      Optional[str]   = None
     pid_mode:           Optional[str]   = None
     pid_kp:             Optional[float] = None
     pid_ki:             Optional[float] = None
@@ -147,53 +145,50 @@ def serve_dashboard():
 def post_telemetry(data: TelemetryIn):
     now = datetime.utcnow().isoformat()
 
-    # Update live state
-    if data.room_temp   is not None: device_state["room_temp"]   = data.room_temp
-    if data.target_temp is not None: device_state["target_temp"] = data.target_temp
-    if data.power       is not None: device_state["power"]       = data.power
-    if data.mode        is not None: device_state["mode"]        = data.mode
+    # -999 is the ESP32 sentinel for "no sensor connected" — treat as None
+    NO_SENSOR = -999.0
+    room_temp   = None if (data.room_temp   is None or data.room_temp   <= NO_SENSOR) else data.room_temp
+    target_temp = None if (data.target_temp is None or data.target_temp <= NO_SENSOR) else data.target_temp
+
+    # Update live state — only overwrite if real values received
+    if room_temp   is not None: device_state["room_temp"]   = room_temp
+    if target_temp is not None: device_state["target_temp"] = target_temp
+    if data.power  is not None: device_state["power"]       = data.power
+    if data.mode   is not None: device_state["mode"]        = data.mode
     device_state["pid"] = {
         "p": data.pid_p, "i": data.pid_i,
         "d": data.pid_d, "steps": data.pid_steps
     }
     device_state["last_seen"] = now
 
-    # Persist
-    with get_db() as conn:
-        conn.execute("""
-            INSERT INTO telemetry
-              (ts, room_temp, target_temp, power, mode, pid_p, pid_i, pid_d, pid_steps, integral)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
-        """, (now, data.room_temp, data.target_temp,
-              int(data.power) if data.power is not None else None,
-              data.mode, data.pid_p, data.pid_i, data.pid_d, data.pid_steps, data.integral))
+    # Only persist rows that have real sensor data — keeps history clean
+    if room_temp is not None or target_temp is not None:
+        with get_db() as conn:
+            conn.execute("""
+                INSERT INTO telemetry
+                  (ts, room_temp, target_temp, power, mode, pid_p, pid_i, pid_d, pid_steps, integral)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+            """, (now, room_temp, target_temp,
+                  int(data.power) if data.power is not None else None,
+                  data.mode, data.pid_p, data.pid_i, data.pid_d, data.pid_steps, data.integral))
 
     # Check schedule for current slot
     action = get_scheduled_action_now()
     response = {"status": "ok"}
 
     if action:
-        if action["type"] == "temp" and action["temp"] is not None and data.target_temp is not None:
-            if abs(action["temp"] - data.target_temp) >= 0.5:
+        if action["type"] == "temp" and action["temp"] is not None and target_temp is not None:
+            if abs(action["temp"] - target_temp) >= 0.5:
                 response["scheduled_target"] = action["temp"]
                 log.info("Schedule temp override: %.1f°C", action["temp"])
 
         elif action["type"] == "command" and action["command"]:
-            # Queue the ON/OFF command just like a dashboard button press
             with get_db() as conn:
-                # Only queue if not already queued in last 60s to avoid flooding
-                recent = conn.execute("""
-                    SELECT id FROM commands
-                    WHERE command=? AND source="schedule"
-                      AND ts > datetime("now","-60 seconds")
-                    LIMIT 1
-                """, (action["command"],)).fetchone()
-                if not recent:
-                    conn.execute(
-                        "INSERT INTO commands (ts, command, source) VALUES (?,?,?)",
-                        (datetime.utcnow().isoformat(), action["command"], "schedule")
-                    )
-                    log.info("Schedule command queued: %s", action["command"])
+                conn.execute(
+                    "INSERT INTO commands (ts, command, source) VALUES (?,?,?)",
+                    (datetime.utcnow().isoformat(), action["command"], "schedule")
+                )
+            log.info("Schedule command queued: %s", action["command"])
 
     return response
 
@@ -379,7 +374,7 @@ def get_esp32_config():
         except: cfg[row["key"]] = row["value"]
 
     esp_keys = ["ir_tx_pin","ir_rx_pin","led_red_pin","led_green_pin","led_blue_pin",
-                "wifi_ssid","wifi_password","pid_mode","pid_kp","pid_ki","pid_kd",
+                "pid_mode","pid_kp","pid_ki","pid_kd",
                 "pid_max_steps","control_interval_s","deadband_c"]
     return {k: cfg[k] for k in esp_keys if k in cfg}
 
@@ -412,4 +407,3 @@ def get_scheduled_action_now() -> dict | None:
 def startup():
     init_db()
     log.info("ThermoHub ready — visit http://localhost:5000")
-

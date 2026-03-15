@@ -42,7 +42,7 @@ constexpr int      kHubHttpTimeoutMs         = 3000;
 constexpr bool        kEnableIpTimezoneLookup = true;
 constexpr const char* kIpTimezoneUrl          = "http://ip-api.com/json/?fields=status,timezone,offset";
 
-constexpr bool        kEnableHubMockScheduler = false;
+constexpr bool        kEnableHubMockScheduler = true;
 constexpr const char* kNtpTimezone            = "UTC0"; 
 constexpr const char* kNtpServerPrimary       = "pool.ntp.org";
 constexpr const char* kNtpServerSecondary     = "time.nist.gov";

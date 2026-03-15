@@ -160,6 +160,8 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
 
     float scheduledTarget = 0.0f;
     if (extractJsonFloat(response, "scheduled_target", scheduledTarget)) {
+        scheduledTargetTemp_ = scheduledTarget;
+        Serial.printf("[HUB] Schedule temp override: %.1f°C\n", scheduledTarget);
         logger_.log(wallNow, LogEventType::SCHEDULE_COMMAND, Command::NONE, true);
     }
 #else

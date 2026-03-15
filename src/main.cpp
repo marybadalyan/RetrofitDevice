@@ -9,6 +9,7 @@
 #include "commands.h"
 #include "prefferences.h"
 #include <HTTPClient.h>
+#include <scheduler/scheduler.h>
 
 #include <WiFiManager.h>
 
@@ -38,6 +39,7 @@ namespace {
     NtpClock        gWallClock;
     HubConnectivity gHubConnectivity;
     HubClient       gHubClient(gHubReceiver, gLogger);
+    CommandScheduler gCommandScheduler;
 }
 
 
@@ -153,18 +155,38 @@ void setup() {
 
     // Tell hub_connectivity WiFi is already up — skip its own begin()
     gHubConnectivity.begin(gHubReceiver, gWallClock);
+
+    gCommandScheduler.setEnabled(true);
 }
 
 
 void loop() {
     const uint32_t nowMs = millis();
     const uint32_t nowUs = micros();
+    static uint32_t lastTelemetryMs = 0;
 
     gHubConnectivity.tick(nowMs, gHubReceiver, gWallClock);
     const WallClockSnapshot wallNow = gWallClock.now(nowMs, nowUs);
 
     gHubClient.tick(nowMs, wallNow,
                     gHubConnectivity.wifiConnected());
+
+    if (nowMs - lastTelemetryMs >= 10000) {
+        lastTelemetryMs = nowMs;
+        HubClient::Telemetry t;
+        // -999 = no sensor connected, server will ignore these fields
+        t.roomTempC   = -999.0f;
+        t.targetTempC = -999.0f;
+        t.powerOn     = false;
+        gHubClient.submitTelemetry(t);
+    }
+
+    Command scheduledCmd;
+    if (gCommandScheduler.nextDueCommand(nowMs, wallNow, scheduledCmd)) {
+        Serial.print("[SCHED] Firing scheduled command: ");
+        Serial.println(commandToString(scheduledCmd));
+        gHubReceiver.push(scheduledCmd);
+    }
 
     Command cmd;
     while (gHubReceiver.poll(cmd)) {

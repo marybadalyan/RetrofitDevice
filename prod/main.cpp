@@ -9,6 +9,7 @@
 #include "commands.h"
 #include "prefferences.h"
 #include <HTTPClient.h>
+#include <scheduler/scheduler.h>
 
 #include <WiFiManager.h>
 
