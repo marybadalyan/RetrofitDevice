@@ -12,26 +12,6 @@
 
 #include <WiFiManager.h>
 
-
-
-#define PROVISION_BUTTON_GPIO  0
-#define HOLD_DURATION_MS       3000
-
-bool should_reprovision() {
-    pinMode(PROVISION_BUTTON_GPIO, INPUT_PULLUP);
-    Serial.printf("[WIFI] Boot button state: %d\n", digitalRead(PROVISION_BUTTON_GPIO));
-    if (digitalRead(PROVISION_BUTTON_GPIO) == LOW) {
-        Serial.println("[WIFI] Button held, hold 3s to reprovision...");
-        delay(HOLD_DURATION_MS);
-        if (digitalRead(PROVISION_BUTTON_GPIO) == LOW) {
-            Serial.println("[WIFI] Confirmed.");
-            return true;
-        }
-        Serial.println("[WIFI] Released too early, ignoring.");
-    }
-    return false;
-}
-
 namespace {
     HubReceiver     gHubReceiver;
     Logger          gLogger;
@@ -73,6 +53,13 @@ bool fetchTimezoneOffset(int32_t& outOffsetSeconds) {
     return true;
 }
 
+void setup() {
+    Serial.begin(115200);
+    delay(1000);
+
+    gLogger.beginPersistence("retrofit-log");
+
+    WiFiManager wifiManager;
 
 const char* portalCSS = R"(
 <style>
@@ -86,33 +73,10 @@ const char* portalCSS = R"(
 </style>
 )";
 
+wifiManager.setCustomHeadElement(portalCSS);
 
-void setup() {
-    Serial.begin(115200);
-    delay(1000);
-
-    #ifdef DEV_WIFI_SSID
-    // Development shortcut — hardcoded credentials, skip WiFiManager entirely
-    Serial.println("[WIFI] Dev mode: connecting with hardcoded credentials...");
-    WiFi.begin(DEV_WIFI_SSID, DEV_WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
-    Serial.println();
-#else
-    // Production path — WiFiManager with reprovision button
-    bool reprovision = should_reprovision();
-    gLogger.beginPersistence("retrofit-log");
-    WiFiManager wifiManager;
-    wifiManager.setCustomHeadElement(portalCSS);
-    if (reprovision) {
-        Serial.println("[WIFI] Reprovisioning requested, wiping credentials...");
-        wifiManager.resetSettings();
-    }
+    wifiManager.resetSettings(); // wipes saved credentials
     wifiManager.autoConnect("ESP32-Setup");
-#endif
-
     Serial.println();
     Serial.print("[WIFI] Connected! IP: ");
     Serial.println(WiFi.localIP());

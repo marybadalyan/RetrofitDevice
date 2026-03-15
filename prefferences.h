@@ -29,9 +29,6 @@ constexpr float kThermostatHysteresisC     = 1.0F;
 constexpr uint8_t  kDiagnosticsLogLevel       = 2;
 constexpr uint32_t kHealthSnapshotIntervalMs   = 10000;
 
-// ── WiFi ──────────────────────────────────────────────────────
-// constexpr const char* kWifiSsid     = "Beeline-16";      // ← fill in
-// constexpr const char* kWifiPassword = "trubataburetka";  // ← fill in
 
 // ── Hub ───────────────────────────────────────────────────────
 constexpr const char* kHubHost = "192.168.0.10";  // ← your Mac IP (ipconfig getifaddr en0)
