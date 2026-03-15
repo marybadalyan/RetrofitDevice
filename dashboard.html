@@ -231,14 +231,6 @@
 <div class="page" id="page-config">
   <div class="g2">
     <div>
-      <div class="cfg-card">
-        <h3>Pin Configuration</h3>
-        <div class="field"><label>IR Transmit Pin</label><input type="number" id="cIrTx" placeholder="e.g. 4" min="0" max="39"></div>
-        <div class="field"><label>IR Receive Pin</label><input type="number" id="cIrRx" placeholder="e.g. 15" min="0" max="39"></div>
-        <div class="field"><label>LED Red Pin</label><input type="number" id="cLedR" placeholder="e.g. 25" min="0" max="39"></div>
-        <div class="field"><label>LED Green Pin</label><input type="number" id="cLedG" placeholder="e.g. 26" min="0" max="39"></div>
-        <div class="field"><label>LED Blue Pin</label><input type="number" id="cLedB" placeholder="e.g. 27" min="0" max="39"></div>
-      </div>
       <div class="cfg-card" style="font-size:0.75rem;color:var(--muted);line-height:1.8;">
         <h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:10px;">WiFi</h3>
         To change WiFi credentials, hold the <strong style="color:var(--text)">BOOT</strong> button
@@ -518,8 +510,6 @@ async function loadConfig(){
   const r=await api('/api/config');
   if(!r)return;
   const s=(id,v)=>{const el=document.getElementById(id);if(el&&v!==undefined)el.value=v;};
-  s('cIrTx',r.ir_tx_pin);s('cIrRx',r.ir_rx_pin);
-  s('cLedR',r.led_red_pin);s('cLedG',r.led_green_pin);s('cLedB',r.led_blue_pin);
   s('cMode',r.pid_mode);
   if(r.pid_kp!==undefined){s('cKp',r.pid_kp);rv('rvKp',r.pid_kp);}
   if(r.pid_ki!==undefined){s('cKi',r.pid_ki);rv('rvKi',parseFloat(r.pid_ki).toFixed(3));}
@@ -531,8 +521,6 @@ async function loadConfig(){
 async function saveConfig(){
   const g=id=>document.getElementById(id).value;
   const r=await api('/api/config','POST',{
-    ir_tx_pin:parseInt(g('cIrTx'))||null, ir_rx_pin:parseInt(g('cIrRx'))||null,
-    led_red_pin:parseInt(g('cLedR'))||null, led_green_pin:parseInt(g('cLedG'))||null, led_blue_pin:parseInt(g('cLedB'))||null,
     pid_mode:g('cMode'), pid_kp:parseFloat(g('cKp')), pid_ki:parseFloat(g('cKi')), pid_kd:parseFloat(g('cKd')),
     pid_max_steps:parseInt(g('cMs')), control_interval_s:parseInt(g('cInt')), deadband_c:parseFloat(g('cDb')),
   });
