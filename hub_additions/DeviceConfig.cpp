@@ -13,7 +13,8 @@ static constexpr const char* kKeyPort   = "hub_port";
 
 bool DeviceConfig::load() {
     Preferences prefs;
-    prefs.begin(kNamespace, /*readOnly=*/true);
+    // false = read-write — creates namespace if it doesn't exist yet
+    prefs.begin(kNamespace, false);  // ← was true
 
     prefs.getString(kKeySsid, ssid_,     sizeof(ssid_));
     prefs.getString(kKeyPass, password_, sizeof(password_));

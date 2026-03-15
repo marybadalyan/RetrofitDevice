@@ -107,6 +107,9 @@ void SetupPortal::begin() {
 }
 
 void SetupPortal::tick() {
+#if PORTAL_HAS_DNS
+    dnsServer_.processNextRequest();
+#endif
 #if PORTAL_HAS_WEBSERVER
     server_.handleClient();
 #endif

@@ -24,6 +24,13 @@
 #define PORTAL_HAS_WEBSERVER 0
 #endif
 
+#if __has_include(<DNSServer.h>)
+#include <DNSServer.h>
+#define PORTAL_HAS_DNS 1
+#else
+#define PORTAL_HAS_DNS 0
+#endif
+
 class SetupPortal {
 public:
     explicit SetupPortal(DeviceConfig& cfg);
@@ -38,6 +45,10 @@ public:
     bool done() const { return done_; }
 
 private:
+#if PORTAL_HAS_DNS
+    DNSServer dnsServer_;
+#endif
+
 #if PORTAL_HAS_WEBSERVER
     void handleRoot();
     void handleSave();
