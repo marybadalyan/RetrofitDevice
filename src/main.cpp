@@ -19,40 +19,51 @@
 // Simulates a real room heating/cooling so PID + adaptive can
 // be tested without a physical sensor.
 // Swap roomTempC with a real sensor read when hardware is ready.
+
 namespace MockRoom {
-constexpr float kStartTempC = 18.0f;
-constexpr float kOutsideTempC = 15.0f;
-constexpr float kHeatingRateCPerMs = 0.000008f;
-constexpr float kCoolingRateCPerMs = 0.000008f;
+    enum class Season { WINTER, SUMMER };
+    constexpr Season kSeason = Season::SUMMER;  // ← toggle this to test
 
-float roomTempC = kStartTempC;
-float heaterSetpointC = 21.0f;
-bool heaterOn = false;
-uint32_t lastUpdateMs = 0;
+    constexpr float kStartTempC    = (kSeason == Season::WINTER) ? 18.0f : 30.0f;
+    constexpr float kOutsideTempC  = (kSeason == Season::WINTER) ? 15.0f : 35.0f;
+    constexpr float kHeatingRateCPerMs = 0.000008f;
+    constexpr float kCoolingRateCPerMs = 0.000008f;
 
-void applySteps(int8_t steps, float targetTempC) {
-  heaterSetpointC += steps * 0.5f;
-  if (heaterSetpointC < targetTempC - 2.0f)
-    heaterSetpointC = targetTempC - 2.0f;
-  if (heaterSetpointC > targetTempC + 2.0f)
-    heaterSetpointC = targetTempC + 2.0f;
+    float roomTempC      = kStartTempC;
+    float heaterSetpointC = 21.0f;
+    bool  heaterOn        = false;
+    uint32_t lastUpdateMs = 0;
+
+    void applySteps(int8_t steps, float targetTempC) {
+        heaterSetpointC += steps * 0.5f;
+        if (heaterSetpointC < targetTempC - 2.0f) heaterSetpointC = targetTempC - 2.0f;
+        if (heaterSetpointC > targetTempC + 2.0f) heaterSetpointC = targetTempC + 2.0f;
+    }
+
+    void update(uint32_t nowMs) {
+        if (lastUpdateMs == 0) { lastUpdateMs = nowMs; return; }
+        const float dtMs = static_cast<float>(nowMs - lastUpdateMs);
+        lastUpdateMs = nowMs;
+
+        if (kSeason == Season::WINTER) {
+            // heater adds warmth, room loses heat to cold outside
+            if (heaterOn && roomTempC < heaterSetpointC)
+                roomTempC += kHeatingRateCPerMs * dtMs;
+            else if (roomTempC > kOutsideTempC) {
+                roomTempC -= kCoolingRateCPerMs * dtMs;
+                if (roomTempC < kOutsideTempC) roomTempC = kOutsideTempC;
+            }
+        } else {
+            // SUMMER: AC cools room, room gains heat from hot outside
+            if (heaterOn && roomTempC > heaterSetpointC)
+                roomTempC -= kHeatingRateCPerMs * dtMs;  // AC cooling
+            else if (roomTempC < kOutsideTempC) {
+                roomTempC += kCoolingRateCPerMs * dtMs;  // heat gain from outside
+                if (roomTempC > kOutsideTempC) roomTempC = kOutsideTempC;
+            }
+        }
+    }
 }
-void update(uint32_t nowMs) {
-  if (lastUpdateMs == 0) {
-    lastUpdateMs = nowMs;
-    return;
-  }
-  const float dtMs = static_cast<float>(nowMs - lastUpdateMs);
-  lastUpdateMs = nowMs;
-  if (heaterOn && roomTempC < heaterSetpointC) {
-    roomTempC += kHeatingRateCPerMs * dtMs;
-  } else if (roomTempC > kOutsideTempC) {
-    roomTempC -= kCoolingRateCPerMs * dtMs;
-    if (roomTempC < kOutsideTempC)
-      roomTempC = kOutsideTempC;
-  }
-}
-} // namespace MockRoom
 #define PROVISION_BUTTON_GPIO 0
 #define HOLD_DURATION_MS 3000
 
@@ -92,6 +103,7 @@ float gRoomAtOnC = 0.0f;
 float gTargetAtOnC = 0.0f;
 uint32_t gHeaterOnMs = 0;
 WallClockSnapshot gHeaterOnSnapshot = {};
+
 } // namespace
 
 // ── NARRATIVE LOGGING ────────────────────────────────────────
@@ -166,6 +178,7 @@ const char *portalCSS = R"(
   button{background:#c45c1a;border:none;border-radius:10px;color:#fff;font-family:'DM Mono',monospace;letter-spacing:1.5px;text-transform:uppercase;padding:11px;width:100%;cursor:pointer;}
 </style>
 )";
+
 
 // ── SETUP ────────────────────────────────────────────────────
 void setup() {
