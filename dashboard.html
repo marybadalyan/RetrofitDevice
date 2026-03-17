@@ -135,7 +135,7 @@
   <button class="tab active" onclick="showPage('control',this)">Control</button>
   <button class="tab" onclick="showPage('schedule',this)">Schedule</button>
   <button class="tab" onclick="showPage('history',this)">History</button>
-  <button class="tab" onclick="showPage('config',this)">Config</button>
+
 </nav>
 
 <!-- CONTROL -->
@@ -188,6 +188,37 @@
     <div class="card-label">Heat over time</div>
     <div class="chart-wrap"><canvas id="liveChart"></canvas></div>
   </div>
+
+  <div style="display:flex;gap:12px;margin-top:16px;">
+    <div class="card" style="flex:1;">
+      <div class="card-label">Heating Mode</div>
+      <div style="display:flex;gap:8px;margin-top:4px;">
+        <button id="modeFast" onclick="setMode('FAST')"
+          style="flex:1;padding:12px;border-radius:10px;border:2px solid var(--accent);
+                 background:rgba(196,92,26,.08);font-family:var(--mono);font-size:0.7rem;
+                 letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
+                 color:var(--accent);font-weight:500;transition:all .2s;">
+          ⚡ Fast
+        </button>
+        <button id="modeEco" onclick="setMode('ECO')"
+          style="flex:1;padding:12px;border-radius:10px;border:2px solid var(--border);
+                 background:var(--surface);font-family:var(--mono);font-size:0.7rem;
+                 letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
+                 color:var(--muted);font-weight:500;transition:all .2s;">
+          🌿 Eco
+        </button>
+      </div>
+      <p id="modeDesc" style="font-size:0.7rem;color:var(--muted);margin-top:10px;line-height:1.6;">
+        <strong style="color:var(--text)">Fast</strong> — heats up quickly, prioritises reaching target temperature.
+      </p>
+    </div>
+    <div class="card" style="flex:1;font-size:0.75rem;color:var(--muted);line-height:1.8;">
+      <div class="card-label">WiFi</div>
+      Press <strong style="color:var(--text)">EN</strong> then hold <strong style="color:var(--text)">BOOT</strong> for 3 seconds  to open the
+      <strong style="color:var(--text)">ESP32-Setup</strong> hotspot and enter new credentials.
+    </div>
+  </div>
+
 </div>
 
 <!-- SCHEDULE -->
@@ -227,36 +258,6 @@
   </div>
 </div>
 
-<!-- CONFIG -->
-<div class="page" id="page-config">
-  <div class="g2">
-    <div>
-      <div class="cfg-card" style="font-size:0.75rem;color:var(--muted);line-height:1.8;">
-        <h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:10px;">WiFi</h3>
-        To change WiFi credentials, hold the <strong style="color:var(--text)">BOOT</strong> button
-        on the device for 3 seconds after reset. The device will open a setup hotspot
-        <strong style="color:var(--text)">ESP32-Setup</strong> — connect to it and enter new credentials.
-      </div>
-    </div>
-    <div>
-      <div class="cfg-card">
-        <h3>PID Tuning</h3>
-        <div class="field"><label>Mode</label><select id="cMode"><option value="FAST">Fast</option><option value="ECO">Eco</option></select></div>
-        <div class="field"><label>Kp <span class="rv" id="rvKp">1.6</span></label><input type="range" id="cKp" min="0.1" max="5" step="0.1" value="1.6" oninput="rv('rvKp',this.value)"></div>
-        <div class="field"><label>Ki <span class="rv" id="rvKi">0.020</span></label><input type="range" id="cKi" min="0.001" max="0.2" step="0.001" value="0.02" oninput="rv('rvKi',parseFloat(this.value).toFixed(3))"></div>
-        <div class="field"><label>Kd <span class="rv" id="rvKd">3.0</span></label><input type="range" id="cKd" min="0" max="10" step="0.1" value="3.0" oninput="rv('rvKd',this.value)"></div>
-        <div class="field"><label>Max Steps <span class="rv" id="rvMs">3</span></label><input type="range" id="cMs" min="1" max="6" step="1" value="3" oninput="rv('rvMs',this.value)"></div>
-        <div class="field"><label>Control Interval (s) <span class="rv" id="rvInt">45</span></label><input type="range" id="cInt" min="10" max="120" step="5" value="45" oninput="rv('rvInt',this.value)"></div>
-        <div class="field"><label>Deadband °C <span class="rv" id="rvDb">0.3</span></label><input type="range" id="cDb" min="0.1" max="2.0" step="0.1" value="0.3" oninput="rv('rvDb',parseFloat(this.value).toFixed(1))"></div>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-p" onclick="saveConfig()">Save to ESP32</button>
-        <button class="btn btn-s" onclick="loadConfig()">Reload</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -269,7 +270,7 @@ let schedEntries = [];
 let liveData = {room:[],target:[],labels:[]};
 let liveChart = null, histChart = null;
 let targetTemp = 21.0;
-let st = {power:false, roomTemp:null, targetTemp:20, mode:'FAST', pid:{p:0,i:0,d:0,steps:0}};
+let st = {power:true, roomTemp:null, targetTemp:21, mode:'FAST', pid:{p:0,i:0,d:0,steps:0}};
 
 // ── helpers ──
 function rv(id, v){ document.getElementById(id).textContent = v; }
@@ -290,7 +291,6 @@ function showPage(name, tabEl){
   document.getElementById('page-'+name).classList.add('active');
   tabEl.classList.add('active');
   if(name==='history') loadHistory();
-  if(name==='config')  loadConfig();
 }
 
 // ── polling ──
@@ -324,6 +324,10 @@ function updateUI(){
   document.getElementById('pD').textContent = st.pid.d?.toFixed(2)??'—';
   document.getElementById('pS').textContent = st.pid.steps??'—';
   const btn=document.getElementById('powerBtn');
+  document.querySelectorAll('[onclick^="stepTarget"]').forEach(b => {
+    b.style.opacity = st.power ? '1' : '0.3';
+    b.style.pointerEvents = st.power ? 'auto' : 'none';
+});
   const lbl=document.getElementById('powerLbl');
   btn.className='power-btn'+(st.power?' on':'');
   lbl.className='power-lbl'+(st.power?' on':'');
@@ -331,37 +335,31 @@ function updateUI(){
   document.getElementById('modeDisp').innerHTML=`<span class="mode-badge mb-${st.mode.toLowerCase()}">${st.mode}</span>`;
 }
 
-// ── controls ──
 async function togglePower(){
-  // Flip UI immediately — don't wait for hub response
-  st.power=!st.power;
-  updateUI();
-  const cmd=st.power?'on':'off';
-  const r=await api('/api/command','POST',{command:cmd});
-  if(r){
-    toast(cmd.toUpperCase()+' sent');
-  } else {
-    // Revert if hub unreachable
-    st.power=!st.power;
-    updateUI();
-    toast('Hub offline — not sent');
-  }
+    const cmd = st.power ? 'off' : 'on';
+    const r = await api('/api/command','POST',{command:cmd});
+    if(r){
+        toast(cmd.toUpperCase()+' sent');
+        await poll();  // ← update UI immediately
+    } else {
+        toast('Hub offline — not sent');
+    }
 }
-async function stepTarget(delta){
-  const prev = targetTemp;
-  targetTemp = Math.round(Math.max(10, Math.min(35, targetTemp + delta)) * 2) / 2;
-  document.getElementById('targetDisp2').textContent = targetTemp.toFixed(1);
 
-  // Send temp_up / temp_down command — same as physical remote button
-  const cmd = delta > 0 ? 'temp_up' : 'temp_down';
-  const r = await api('/api/command','POST',{command: cmd});
-  if(r){
-    toast(delta > 0 ? 'Temp ▲ '+targetTemp.toFixed(1)+'°C' : 'Temp ▼ '+targetTemp.toFixed(1)+'°C');
-  } else {
-    targetTemp = prev; // revert
+async function stepTarget(delta){
+    const prev = targetTemp;
+    targetTemp = Math.round(Math.max(10, Math.min(35, targetTemp + delta)) * 2) / 2;
     document.getElementById('targetDisp2').textContent = targetTemp.toFixed(1);
-    toast('Hub offline');
-  }
+    const cmd = delta > 0 ? 'temp_up' : 'temp_down';
+    const r = await api('/api/command','POST',{command: cmd});
+    if(r){
+        toast(delta > 0 ? 'Temp ▲ '+targetTemp.toFixed(1)+'°C' : 'Temp ▼ '+targetTemp.toFixed(1)+'°C');
+        await poll();  // ← update UI immediately
+    } else {
+        targetTemp = prev;
+        document.getElementById('targetDisp2').textContent = targetTemp.toFixed(1);
+        toast('Hub offline');
+    }
 }
 
 // ── live chart ──
@@ -505,33 +503,39 @@ async function loadSched(){
   renderEntries();
 }
 
-// ── config ──
-async function loadConfig(){
-  const r=await api('/api/config');
-  if(!r)return;
-  const s=(id,v)=>{const el=document.getElementById(id);if(el&&v!==undefined)el.value=v;};
-  s('cMode',r.pid_mode);
-  if(r.pid_kp!==undefined){s('cKp',r.pid_kp);rv('rvKp',r.pid_kp);}
-  if(r.pid_ki!==undefined){s('cKi',r.pid_ki);rv('rvKi',parseFloat(r.pid_ki).toFixed(3));}
-  if(r.pid_kd!==undefined){s('cKd',r.pid_kd);rv('rvKd',r.pid_kd);}
-  if(r.pid_max_steps!==undefined){s('cMs',r.pid_max_steps);rv('rvMs',r.pid_max_steps);}
-  if(r.control_interval_s!==undefined){s('cInt',r.control_interval_s);rv('rvInt',r.control_interval_s);}
-  if(r.deadband_c!==undefined){s('cDb',r.deadband_c);rv('rvDb',parseFloat(r.deadband_c).toFixed(1));}
+// ── mode ──
+let currentMode = 'FAST';
+
+function setMode(mode) {
+  currentMode = mode;
+  const isFast = mode === 'FAST';
+  const fast = document.getElementById('modeFast');
+  const eco  = document.getElementById('modeEco');
+  const desc = document.getElementById('modeDesc');
+  if(!fast||!eco) return;
+  fast.style.borderColor = isFast ? 'var(--accent)' : 'var(--border)';
+  fast.style.background  = isFast ? 'rgba(196,92,26,.08)' : 'var(--surface)';
+  fast.style.color       = isFast ? 'var(--accent)' : 'var(--muted)';
+  eco.style.borderColor  = !isFast ? 'var(--green)' : 'var(--border)';
+  eco.style.background   = !isFast ? 'rgba(74,140,92,.08)' : 'var(--surface)';
+  eco.style.color        = !isFast ? 'var(--green)' : 'var(--muted)';
+  if(desc) desc.innerHTML = isFast
+    ? '<strong style="color:var(--text)">Fast</strong> — heats up quickly, prioritises reaching target temperature.'
+    : '<strong style="color:var(--text)">Eco</strong> — gentle heating, saves energy and reduces IR commands.';
+  api('/api/config','POST',{pid_mode: mode}).then(r => r ? toast('Mode saved ✓') : toast('Save failed'));
 }
-async function saveConfig(){
-  const g=id=>document.getElementById(id).value;
-  const r=await api('/api/config','POST',{
-    pid_mode:g('cMode'), pid_kp:parseFloat(g('cKp')), pid_ki:parseFloat(g('cKi')), pid_kd:parseFloat(g('cKd')),
-    pid_max_steps:parseInt(g('cMs')), control_interval_s:parseInt(g('cInt')), deadband_c:parseFloat(g('cDb')),
-  });
-  r?toast('Config saved to ESP32 ✓'):toast('Save failed');
+
+async function loadMode(){
+  const r = await api('/api/config');
+  if(r?.pid_mode) setMode(r.pid_mode);
 }
 
 // ── boot ──
 initLiveChart();
 loadSched();
+loadMode();
 poll();
-setInterval(poll, 5000);
+setInterval(poll, 2000);  
 </script>
 </body>
 </html>

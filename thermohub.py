@@ -112,6 +112,8 @@ class ConfigIn(BaseModel):
     led_red_pin:        Optional[int]   = None
     led_green_pin:      Optional[int]   = None
     led_blue_pin:       Optional[int]   = None
+    wifi_ssid:          Optional[str]   = None
+    wifi_password:      Optional[str]   = None
     pid_mode:           Optional[str]   = None
     pid_kp:             Optional[float] = None
     pid_ki:             Optional[float] = None
@@ -236,7 +238,7 @@ def get_pending_command():
 
 # ── History ───────────────────────────────────────────────────
 @app.get("/api/history")
-def get_history(hours: int = 24):
+def get_history(hours: int = 336):
     cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
     with get_db() as conn:
         rows = conn.execute("""
@@ -374,7 +376,7 @@ def get_esp32_config():
         except: cfg[row["key"]] = row["value"]
 
     esp_keys = ["ir_tx_pin","ir_rx_pin","led_red_pin","led_green_pin","led_blue_pin",
-                "pid_mode","pid_kp","pid_ki","pid_kd",
+                "wifi_ssid","wifi_password","pid_mode","pid_kp","pid_ki","pid_kd",
                 "pid_max_steps","control_interval_s","deadband_c"]
     return {k: cfg[k] for k in esp_keys if k in cfg}
 

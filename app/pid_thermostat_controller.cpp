@@ -54,9 +54,10 @@ PidThermostatController::Result PidThermostatController::tick(uint32_t nowMs, fl
     result.errorC = targetTempC - roomTempC;
 
     if (std::fabs(result.errorC) < config_.deadbandC) {
+        integral_ = 0.0f;  // ← add this
         lastRoomTempC_ = roomTempC;
-        return result;
-    }
+    return result;
+}
 
     ThermostatTuning tuning = (mode_ == ThermostatMode::FAST) ? config_.fast : config_.eco;
     if (runtimeOverrides_.enabled) {
