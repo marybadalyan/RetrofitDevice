@@ -19,39 +19,20 @@
 // Simulates a real room heating/cooling so PID + adaptive can
 // be tested without a physical sensor.
 // Swap roomTempC with a real sensor read when hardware is ready.
-
-/**
- * For integrating the real temperature sensor 
- * DELETE these two lines: 
- * MockRoom::heaterOn = gHeaterPowered;
- * MockRoom::update(nowMs); 
- * relace const float roomTempC = MockRoom::roomTempC;
- * with gTempSensor.readTemperatureC();
- * DELETE:
- * gPid.reset(MockRoom::roomTempC);
- * REPLACE WITH: 
- * const float initialTemp = gTempSensor.readTemperatureC();
- * gPid.reset(initialTemp);
- * DELETE
- * MockRoom::applySteps(pidResult.steps, gTargetTempC);
- * Serial.printf("[MOCK] heaterSetpoint now %.1f°C\n", MockRoom::heaterSetpointC);
- * and MockRoom
- * also add 
- * #include "room_temp_sensor.h" and the RoomTempSensor gTempSensor;
- */
+#ifndef REAL_SENSOR
 namespace MockRoom {
     enum class Season { WINTER, SUMMER };
-    constexpr Season kSeason = Season::SUMMER;  // ← toggle this to test
+    constexpr Season kSeason = Season::WINTER;  // ← toggle to test summer
 
-    constexpr float kStartTempC    = (kSeason == Season::WINTER) ? 18.0f : 30.0f;
-    constexpr float kOutsideTempC  = (kSeason == Season::WINTER) ? 15.0f : 35.0f;
+    constexpr float kStartTempC       = (kSeason == Season::WINTER) ? 18.0f : 30.0f;
+    constexpr float kOutsideTempC     = (kSeason == Season::WINTER) ? 15.0f : 35.0f;
     constexpr float kHeatingRateCPerMs = 0.000008f;
     constexpr float kCoolingRateCPerMs = 0.000008f;
 
-    float roomTempC      = kStartTempC;
-    float heaterSetpointC = 21.0f;
-    bool  heaterOn        = false;
-    uint32_t lastUpdateMs = 0;
+    float    roomTempC       = kStartTempC;
+    float    heaterSetpointC = 21.0f;
+    bool     heaterOn        = false;
+    uint32_t lastUpdateMs    = 0;
 
     void applySteps(int8_t steps, float targetTempC) {
         heaterSetpointC += steps * 0.5f;
@@ -65,7 +46,7 @@ namespace MockRoom {
         lastUpdateMs = nowMs;
 
         if (kSeason == Season::WINTER) {
-            // heater adds warmth, room loses heat to cold outside
+            // heater warms room, room loses heat to cold outside
             if (heaterOn && roomTempC < heaterSetpointC)
                 roomTempC += kHeatingRateCPerMs * dtMs;
             else if (roomTempC > kOutsideTempC) {
@@ -75,14 +56,20 @@ namespace MockRoom {
         } else {
             // SUMMER: AC cools room, room gains heat from hot outside
             if (heaterOn && roomTempC > heaterSetpointC)
-                roomTempC -= kHeatingRateCPerMs * dtMs;  // AC cooling
+                roomTempC -= kHeatingRateCPerMs * dtMs;
             else if (roomTempC < kOutsideTempC) {
-                roomTempC += kCoolingRateCPerMs * dtMs;  // heat gain from outside
+                roomTempC += kCoolingRateCPerMs * dtMs;
                 if (roomTempC > kOutsideTempC) roomTempC = kOutsideTempC;
             }
         }
     }
-}
+} // namespace MockRoom
+#endif // REAL_SENSOR
+
+#ifdef REAL_SENSOR
+namespace { RoomTempSensor gTempSensor; }
+#endif
+
 #define PROVISION_BUTTON_GPIO 0
 #define HOLD_DURATION_MS 3000
 
@@ -122,7 +109,6 @@ float gRoomAtOnC = 0.0f;
 float gTargetAtOnC = 0.0f;
 uint32_t gHeaterOnMs = 0;
 WallClockSnapshot gHeaterOnSnapshot = {};
-
 } // namespace
 
 // ── NARRATIVE LOGGING ────────────────────────────────────────
@@ -158,6 +144,7 @@ void onHeaterTurnedOff(uint32_t nowMs, const WallClockSnapshot &wallNow,
   gHeaterWasOn = false;
 }
 
+// ── TIMEZONE FETCH ───────────────────────────────────────────
 bool fetchTimezoneOffset(int32_t &outOffsetSeconds) {
   HTTPClient http;
   http.begin(kIpTimezoneUrl);
@@ -196,7 +183,6 @@ const char *portalCSS = R"(
   button{background:#c45c1a;border:none;border-radius:10px;color:#fff;font-family:'DM Mono',monospace;letter-spacing:1.5px;text-transform:uppercase;padding:11px;width:100%;cursor:pointer;}
 </style>
 )";
-
 
 // ── SETUP ────────────────────────────────────────────────────
 void setup() {
@@ -256,11 +242,20 @@ void setup() {
 
   gHubConnectivity.begin(gHubReceiver, gWallClock);
   gCommandScheduler.setEnabled(true);
-  gPid.reset(MockRoom::roomTempC); // swap out for real sensor when ready
+#ifndef REAL_SENSOR
+  gPid.reset(MockRoom::roomTempC);
+#else
+  gTempSensor.begin();
+  gPid.reset(gTempSensor.readTemperatureC());
+#endif
 
-  Serial.printf(
-      "[MOCK] Room model: start=%.1f°C outside=%.1f°C target=%.1f°C\n",
-      MockRoom::kStartTempC, MockRoom::kOutsideTempC, gTargetTempC);
+#ifndef REAL_SENSOR
+  Serial.printf("[MOCK] Season: %s | start=%.1f°C outside=%.1f°C target=%.1f°C\n",
+                MockRoom::kSeason == MockRoom::Season::WINTER ? "WINTER" : "SUMMER",
+                MockRoom::kStartTempC, MockRoom::kOutsideTempC, gTargetTempC);
+#else
+  Serial.println("[SENSOR] DS18B20 active.");
+#endif
 }
 
 // ── LOOP ─────────────────────────────────────────────────────
@@ -269,12 +264,14 @@ void loop() {
   const uint32_t nowUs = micros();
   static uint32_t lastTelemetryMs = 0;
 
-  // ── 1. Update mock room ───────────────────────────────────
+  // ── 1. Read room temperature ─────────────────────────────
+#ifndef REAL_SENSOR
   MockRoom::heaterOn = gHeaterPowered;
   MockRoom::update(nowMs);
   const float roomTempC = MockRoom::roomTempC;
-  // ↑ Replace with real sensor when ready:
-  // const float roomTempC = readTempSensor();
+#else
+  const float roomTempC = gTempSensor.readTemperatureC();
+#endif
 
   // ── 2. Connectivity + time ────────────────────────────────
   gHubConnectivity.tick(nowMs, gHubReceiver, gWallClock);
@@ -319,9 +316,10 @@ void loop() {
           static_cast<uint8_t>(pidResult.steps < 0 ? 0 : pidResult.steps));
 
       if (pidResult.steps != 0) {
+#ifndef REAL_SENSOR
         MockRoom::applySteps(pidResult.steps, gTargetTempC);
-        Serial.printf("[MOCK] heaterSetpoint now %.1f°C\n",
-                      MockRoom::heaterSetpointC); // ← add this
+        Serial.printf("[MOCK] heaterSetpoint now %.1f°C\n", MockRoom::heaterSetpointC);
+#endif
         gAdaptive.onControlStepsSent(nowMs, roomTempC, pidResult.steps);
         // TODO: replace with real IR:
         // for (int s = 0; s < abs(pidResult.steps); s++)
@@ -366,7 +364,9 @@ void loop() {
     case Command::ON:
       if (!gHeaterPowered) {
         gHeaterPowered = true;
-        MockRoom::heaterSetpointC = gTargetTempC; // ← reset mock setpoint
+#ifndef REAL_SENSOR
+        MockRoom::heaterSetpointC = gTargetTempC;
+#endif
         gPid.reset(roomTempC);
         onHeaterTurnedOn(nowMs, wallNow, roomTempC, gTargetTempC);
       }
