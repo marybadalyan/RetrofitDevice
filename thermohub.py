@@ -126,7 +126,7 @@ class ConfigIn(BaseModel):
 device_state = {
     "room_temp":   None,
     "target_temp": None,
-    "power":       False,
+    "power":       True,
     "mode":        "FAST",
     "pid":         {"p": 0, "i": 0, "d": 0, "steps": 0},
     "last_seen":   None,
@@ -305,7 +305,7 @@ def generate_schedule():
         raise HTTPException(400, "Need at least 50 powered-on readings to generate a schedule")
 
     df = pd.DataFrame([dict(r) for r in rows])
-    df["ts"] = pd.to_datetime(df["ts"])
+    df["ts"] = pd.to_datetime(df["ts"], format='mixed')
     df["dow"] = df["ts"].dt.day_name().str[:3]   # Mon, Tue ...
     df["hour"] = df["ts"].dt.hour
 

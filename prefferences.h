@@ -27,14 +27,14 @@ constexpr int kTempSensorPin = 14;
 // ── Diagnostics ───────────────────────────────────────────────
 constexpr uint8_t  kDiagnosticsLogLevel       = 2;
 constexpr uint32_t kHealthSnapshotIntervalMs   = 10000;
-constexpr uint32_t kDefaultTargetTemperatureC = 21.0F;
+// constexpr uint32_t kDefaultTargetTemperatureC = 21.0F;
 
 // ── Hub ───────────────────────────────────────────────────────
-constexpr const char* kHubHost = "192.168.0.10";  // ← your Mac IP (ipconfig getifaddr en0)
+constexpr const char* kHubHost = "192.168.0.14";  // ← your Mac IP (ipconfig getifaddr en0)
 constexpr int         kHubPort = 5000;
 
-constexpr uint32_t kHubCommandPollIntervalMs = 3000U;  // poll every 10s
-constexpr uint32_t kHubTelemetryIntervalMs   = 45000U;  // telemetry every 45s
+constexpr uint32_t kHubCommandPollIntervalMs = 2000U;   
+constexpr uint32_t kHubTelemetryIntervalMs   = 5000U;  
 constexpr int      kHubHttpTimeoutMs         = 3000;
 
 // ── NTP ───────────────────────────────────────────────────────
