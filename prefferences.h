@@ -2,16 +2,15 @@
 
 #include <cstdint>
 
-// ── IR (commented out — no hardware yet) ─────────────────────
-// constexpr int kIrTxPin = 4;
-// constexpr int kIrRxPin = 15;
-// constexpr int kStatusLedRedPin = 18;
-// constexpr int kStatusLedGreenPin = 19;
-// constexpr int kStatusLedBluePin = 21;
-// constexpr bool kStatusLedEnabled = true;
-// constexpr uint8_t kIrPwmChannel = 0;
-// constexpr uint32_t kIrCarrierFreqHz = 38000;
-// constexpr uint8_t kIrPwmResolutionBits = 8;
+constexpr int kIrTxPin = 4;
+constexpr int kIrRxPin = 15;
+constexpr int kStatusLedRedPin = 18;
+constexpr int kStatusLedGreenPin = 19;
+constexpr int kStatusLedBluePin = 21;
+constexpr bool kStatusLedEnabled = true;
+constexpr uint8_t kIrPwmChannel = 0;
+constexpr uint32_t kIrCarrierFreqHz = 38000;
+constexpr uint8_t kIrPwmResolutionBits = 8;
 
 // ── NEC protocol ─────────────────────────────────────────────
 constexpr uint16_t kNecDeviceAddress  = 0x00FF;
@@ -21,14 +20,14 @@ constexpr uint8_t  kNecCommandTempUp  = 0x03;
 constexpr uint8_t  kNecCommandTempDown= 0x04;
 
 // ── Thermostat ────────────────────────────────────────────────
-constexpr bool  kSchedulerEnabled          = false;
-constexpr float kDefaultTargetTemperatureC = 22.0F;
+constexpr bool  kSchedulerEnabled          = true;
 constexpr float kThermostatHysteresisC     = 1.0F;
+constexpr int kTempSensorPin = 14;
 
 // ── Diagnostics ───────────────────────────────────────────────
 constexpr uint8_t  kDiagnosticsLogLevel       = 2;
 constexpr uint32_t kHealthSnapshotIntervalMs   = 10000;
-
+constexpr uint32_t kDefaultTargetTemperatureC = 21.0F;
 
 // ── Hub ───────────────────────────────────────────────────────
 constexpr const char* kHubHost = "192.168.0.10";  // ← your Mac IP (ipconfig getifaddr en0)

@@ -20,6 +20,25 @@
 // be tested without a physical sensor.
 // Swap roomTempC with a real sensor read when hardware is ready.
 
+/**
+ * For integrating the real temperature sensor 
+ * DELETE these two lines: 
+ * MockRoom::heaterOn = gHeaterPowered;
+ * MockRoom::update(nowMs); 
+ * relace const float roomTempC = MockRoom::roomTempC;
+ * with gTempSensor.readTemperatureC();
+ * DELETE:
+ * gPid.reset(MockRoom::roomTempC);
+ * REPLACE WITH: 
+ * const float initialTemp = gTempSensor.readTemperatureC();
+ * gPid.reset(initialTemp);
+ * DELETE
+ * MockRoom::applySteps(pidResult.steps, gTargetTempC);
+ * Serial.printf("[MOCK] heaterSetpoint now %.1f°C\n", MockRoom::heaterSetpointC);
+ * and MockRoom
+ * also add 
+ * #include "room_temp_sensor.h" and the RoomTempSensor gTempSensor;
+ */
 namespace MockRoom {
     enum class Season { WINTER, SUMMER };
     constexpr Season kSeason = Season::SUMMER;  // ← toggle this to test
@@ -139,7 +158,6 @@ void onHeaterTurnedOff(uint32_t nowMs, const WallClockSnapshot &wallNow,
   gHeaterWasOn = false;
 }
 
-// ── TIMEZONE FETCH ───────────────────────────────────────────
 bool fetchTimezoneOffset(int32_t &outOffsetSeconds) {
   HTTPClient http;
   http.begin(kIpTimezoneUrl);

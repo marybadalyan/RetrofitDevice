@@ -9,9 +9,9 @@
 #include "app/retrofit_controller.h"
 #undef private
 #include "heater/heater.h"
-#include "hub/hub_ai_insights.h"
-#include "hub/hub_mock_scheduler.h"
+#include "hub_additions/hub_ai_insights.h"
 #include "hub/hub_receiver.h"
+#include "hub_additions/hub_mock_scheduler.h"
 #include "logger.h"
 #include "scheduler/scheduler.h"
 #include "time/mock_clock.h"
@@ -431,7 +431,7 @@ void test_retrofit_logs_command_then_tx_failure_in_native() {
 
     controller.tick(1000, 1000000, wall, 20.0F);
 
-    TEST_ASSERT_EQUAL_UINT32(7, logger.size());
+    TEST_ASSERT_EQUAL_UINT32(5, logger.size());
     const LogEntry& source = logger.entries()[0];
 
     TEST_ASSERT_EQUAL(LogEventType::HUB_COMMAND_RX, source.type);
@@ -453,8 +453,8 @@ void test_retrofit_logs_command_then_tx_failure_in_native() {
             TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(TxFailureCode::HW_UNAVAILABLE), entry.detailCode);
         }
     }
-    TEST_ASSERT_EQUAL_UINT32(3, thermostatControlCount);
-    TEST_ASSERT_EQUAL_UINT32(3, txFailCount);
+    TEST_ASSERT_EQUAL_UINT32(2, thermostatControlCount);
+    TEST_ASSERT_EQUAL_UINT32(2, txFailCount);
 }
 
 // Heater apply result should be reflected in STATE_CHANGE logging.

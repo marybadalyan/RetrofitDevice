@@ -6,7 +6,7 @@
 #include "../commands.h"
 #include "../scheduler/scheduler.h"
 #include "../time/wall_clock.h"
-#include "hub_receiver.h"
+#include "hub/hub_receiver.h"
 
 class HubMockScheduler {
 public:
