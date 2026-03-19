@@ -2,11 +2,17 @@
 
 #include <cstdint>
 
+// ── PER-DEVICE CONFIG — change these before each flash ───────
+#define DEVICE_ID   "YO4T2S"
+#define DEVICE_PASS "j#Lv6pdONQ" 
+#define SERVER_URL  "https://nontheoretic-alyce-noncommunistic.ngrok-free.dev"
+// ─────────────────────────────────────────────────────────────
+
 constexpr int kIrTxPin = 4;
 constexpr int kIrRxPin = 15;
 constexpr int kStatusLedRedPin = 18;
 constexpr int kStatusLedGreenPin = 19;
-constexpr int kStatusLedBluePin = 21;
+constexpr int kStatusLedBluePin = 23;
 constexpr bool kStatusLedEnabled = true;
 constexpr uint8_t kIrPwmChannel = 0;
 constexpr uint32_t kIrCarrierFreqHz = 38000;
@@ -30,8 +36,8 @@ constexpr uint32_t kHealthSnapshotIntervalMs   = 10000;
 // constexpr uint32_t kDefaultTargetTemperatureC = 21.0F;
 
 // ── Hub ───────────────────────────────────────────────────────
-constexpr const char* kHubHost = "192.168.0.14";  // ← your Mac IP (ipconfig getifaddr en0)
-constexpr int         kHubPort = 5000;
+constexpr const char* kHubHost = "nontheoretic-alyce-noncommunistic.ngrok-free.dev";
+constexpr int         kHubPort = 443;  // kept for compatibility but not used in URLs
 
 constexpr uint32_t kHubCommandPollIntervalMs = 2000U;   
 constexpr uint32_t kHubTelemetryIntervalMs   = 5000U;  
@@ -46,3 +52,8 @@ constexpr const char* kNtpTimezone            = "UTC0";
 constexpr const char* kNtpServerPrimary       = "pool.ntp.org";
 constexpr const char* kNtpServerSecondary     = "time.nist.gov";
 constexpr const char* kNtpServerTertiary      = "time.google.com";
+
+
+constexpr int kOledSdaPin = 21;  // I2C SDA
+constexpr int kOledSclPin = 22;  // I2C SCL
+constexpr uint8_t kOledAddress = 0x3C;  // most common address
