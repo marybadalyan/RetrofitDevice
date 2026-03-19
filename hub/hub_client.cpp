@@ -58,8 +58,7 @@ void HubClient::pollCommand(const WallClockSnapshot& wallNow) {
     http.setTimeout(kHubHttpTimeoutMs);
 
     char url[128] = {0};
-    snprintf(url, sizeof(url), "http://%s:%d/api/command/pending",
-             kHubHost, kHubPort);
+    snprintf(url, sizeof(url), "https://%s/api/command/pending", kHubHost);
 
     if (!http.begin(url)) {
         hubReachable_ = false;
@@ -121,8 +120,7 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
     http.setTimeout(kHubHttpTimeoutMs);
 
     char url[128] = {0};
-    snprintf(url, sizeof(url), "http://%s:%d/api/telemetry",
-             kHubHost, kHubPort);
+    snprintf(url, sizeof(url), "https://%s/api/telemetry", kHubHost);
 
     if (!http.begin(url)) {
         hubReachable_ = false;
@@ -146,6 +144,8 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
     );
 
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("X-Device-ID", DEVICE_ID);
+    http.addHeader("Authorization", DEVICE_PASS);
     const int httpCode = http.POST(body);
 
     if (httpCode != 200) {
@@ -163,6 +163,13 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
         scheduledTargetTemp_ = scheduledTarget;
         Serial.printf("[HUB] Schedule temp override: %.1f°C\n", scheduledTarget);
         logger_.log(wallNow, LogEventType::SCHEDULE_COMMAND, Command::NONE, true);
+    }
+
+    char modeStr[8] = {0};
+    if (extractJsonString(response, "pid_mode", modeStr, sizeof(modeStr)) && modeStr[0]) {
+        strncpy(pendingMode_, modeStr, sizeof(pendingMode_) - 1);
+        pendingMode_[sizeof(pendingMode_) - 1] = '\0';
+        Serial.printf("[HUB] Mode change: %s\n", pendingMode_);
     }
 #else
     (void)wallNow;

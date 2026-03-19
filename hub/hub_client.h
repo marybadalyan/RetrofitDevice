@@ -35,6 +35,11 @@ public:
     float scheduledTargetTemp() const { return scheduledTargetTemp_; }
     void  clearScheduledTargetTemp()  { scheduledTargetTemp_ = 0.0f; }
 
+    // Returns pending mode change from hub ("FAST", "ECO", or "" if none)
+    const char* pendingMode() const   { return pendingMode_[0] ? pendingMode_ : nullptr; }
+    void        clearPendingMode()    { pendingMode_[0] = '\0'; }
+
+    void forceTelemetry() { lastTelemetryPostMs_ = 0; }
 private:
     void pollCommand(const WallClockSnapshot& wallNow);
     void postTelemetry(const WallClockSnapshot& wallNow);
@@ -57,4 +62,5 @@ private:
     uint32_t lastCommandPollMs_   = 0;
     uint32_t lastTelemetryPostMs_ = 0;
     float    scheduledTargetTemp_ = 0.0f;
+    char     pendingMode_[8]      = {};
 };

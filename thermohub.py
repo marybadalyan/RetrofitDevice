@@ -8,6 +8,8 @@ Install:
 """
 
 import json
+import csv
+import secrets
 import sqlite3
 import logging
 from datetime import datetime, timedelta
@@ -17,10 +19,11 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 # ── CONFIG ────────────────────────────────────────────────────
@@ -34,6 +37,139 @@ log = logging.getLogger("thermohub")
 # ── APP ───────────────────────────────────────────────────────
 app = FastAPI(title="ThermoHub", version="1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+from starlette.middleware.sessions import SessionMiddleware
+app.add_middleware(SessionMiddleware, secret_key=secrets.token_hex(32))
+
+# ── DEVICE REGISTRY ──────────────────────────────────────────
+DEVICES_FILE = BASE_DIR / "devices.csv"
+
+def load_devices() -> dict:
+    if not DEVICES_FILE.exists():
+        log.warning("devices.csv not found — run generate_devices.py first")
+        return {}
+    devices = {}
+    with open(DEVICES_FILE) as f:
+        for row in csv.DictReader(f):
+            devices[row["id"].upper()] = {
+                "password": row["password"],
+                "name":     row.get("name", f"Device {row['id']}"),
+            }
+    log.info("Loaded %d devices from registry", len(devices))
+    return devices
+
+DEVICES = load_devices()
+
+# ── AUTH HELPERS ─────────────────────────────────────────────
+# ── Login page: shown at / (device ID + password) ───────────
+ENTRY_PAGE = """<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ThermoHub</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    :root{{--bg:#f5f0eb;--surface:#faf7f4;--card:#fff;--border:#e8e0d6;
+          --text:#2a1f14;--muted:#9c8b7a;--accent:#c45c1a;
+          --serif:'DM Serif Display',serif;--mono:'DM Mono',monospace}}
+    body{{background:var(--bg);color:var(--text);font-family:var(--mono);
+         min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}}
+    .card{{background:var(--card);border:1px solid var(--border);border-radius:20px;
+           padding:44px;width:100%;max-width:400px}}
+    .logo{{font-family:var(--serif);font-size:1.4rem;margin-bottom:28px;display:block;
+           letter-spacing:-0.5px}}
+    .logo em{{color:var(--accent);font-style:italic}}
+    h1{{font-family:var(--serif);font-size:2rem;margin-bottom:10px;letter-spacing:-0.5px}}
+    p{{color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:28px}}
+    label{{display:block;font-size:11px;letter-spacing:2px;text-transform:uppercase;
+           color:var(--muted);margin-bottom:8px}}
+    input{{width:100%;background:var(--surface);border:1px solid var(--border);
+           border-radius:10px;padding:13px 16px;font-family:var(--mono);font-size:14px;
+           color:var(--text);outline:none;transition:border-color .2s;margin-bottom:16px}}
+    input:focus{{border-color:var(--accent)}}
+    button{{width:100%;background:var(--accent);color:#fff;border:none;border-radius:10px;
+            padding:14px;font-family:var(--mono);font-size:12px;letter-spacing:1.5px;
+            text-transform:uppercase;cursor:pointer;transition:opacity .2s}}
+    button:hover{{opacity:.85}}
+    .err{{background:rgba(196,92,26,.08);border:1px solid rgba(196,92,26,.25);
+          color:var(--accent);border-radius:10px;padding:12px 16px;
+          font-size:12px;margin-bottom:16px}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="logo">Thermo<em>Hub</em></span>
+    <h1>Welcome back.</h1>
+    <p>Enter your device ID and password from the card that came with your device.</p>
+    {error}
+    <form method="POST" action="/login">
+      <label>Device ID</label>
+      <input type="text" name="device_id" placeholder="e.g. YO4T2S"
+             value="{device_id}" autocomplete="off"
+             style="text-transform:uppercase" autofocus required>
+      <label>Device password</label>
+      <input type="password" name="password" placeholder="••••••••••" required>
+      <button type="submit">Unlock Dashboard</button>
+    </form>
+  </div>
+</body>
+</html>"""
+
+# ── Per-device login page: shown at /device/<id> ─────────────
+LOGIN_PAGE = """<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ThermoHub — Device {device_id}</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    :root{{--bg:#f5f0eb;--surface:#faf7f4;--card:#fff;--border:#e8e0d6;
+          --text:#2a1f14;--muted:#9c8b7a;--accent:#c45c1a;
+          --serif:'DM Serif Display',serif;--mono:'DM Mono',monospace}}
+    body{{background:var(--bg);color:var(--text);font-family:var(--mono);
+         min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}}
+    .card{{background:var(--card);border:1px solid var(--border);border-radius:20px;
+           padding:44px;width:100%;max-width:400px}}
+    .badge{{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);
+            margin-bottom:28px;display:block}}
+    h1{{font-family:var(--serif);font-size:2rem;margin-bottom:10px;letter-spacing:-0.5px}}
+    p{{color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:32px}}
+    label{{display:block;font-size:11px;letter-spacing:2px;text-transform:uppercase;
+           color:var(--muted);margin-bottom:8px}}
+    input{{width:100%;background:var(--surface);border:1px solid var(--border);
+           border-radius:10px;padding:13px 16px;font-family:var(--mono);font-size:14px;
+           color:var(--text);outline:none;transition:border-color .2s;margin-bottom:16px}}
+    input:focus{{border-color:var(--accent)}}
+    button{{width:100%;background:var(--accent);color:#fff;border:none;border-radius:10px;
+            padding:14px;font-family:var(--mono);font-size:12px;letter-spacing:1.5px;
+            text-transform:uppercase;cursor:pointer;transition:opacity .2s}}
+    button:hover{{opacity:.85}}
+    .err{{background:rgba(196,92,26,.08);border:1px solid rgba(196,92,26,.25);
+          color:var(--accent);border-radius:10px;padding:12px 16px;
+          font-size:12px;margin-bottom:16px}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">ThermoHub // {device_id}</span>
+    <h1>Welcome back.</h1>
+    <p>Enter the password that came with your device.</p>
+    {error}
+    <form method="POST">
+      <label>Device password</label>
+      <input type="password" name="password" placeholder="••••••••••" autofocus required>
+      <button type="submit">Unlock Dashboard</button>
+    </form>
+  </div>
+</body>
+</html>"""
+
+def is_authenticated(request: Request, device_id: str) -> bool:
+    return request.session.get(f"auth_{device_id.upper()}") is True
 
 # ── DATABASE ─────────────────────────────────────────────────
 def get_db():
@@ -125,26 +261,97 @@ class ConfigIn(BaseModel):
 # ── IN-MEMORY DEVICE STATE ────────────────────────────────────
 device_state = {
     "room_temp":   None,
-    "target_temp": None,
+    "target_temp": 21.0,
     "power":       True,
     "mode":        "FAST",
     "pid":         {"p": 0, "i": 0, "d": 0, "steps": 0},
     "last_seen":   None,
 }
 
+# ── MANUAL OVERRIDE TRACKING ─────────────────────────────────
+# Tracks the last schedule slot that was active when user manually changed temp.
+# Schedule only overrides again when a NEW slot becomes active after the manual change.
+last_manual_temp_ts: float = 0.0          # when user last pressed +/-
+last_manual_slot_key: str = ""            # which slot was active at that moment
+
 # ─────────────────────────────────────────────────────────────
 #  ROUTES
 # ─────────────────────────────────────────────────────────────
 
 @app.get("/")
-def serve_dashboard():
-    if DASHBOARD_HTML.exists():
+def serve_root():
+    return HTMLResponse(ENTRY_PAGE.format(error="", device_id=""))
+
+@app.post("/login")
+async def login_submit(request: Request):
+    form = await request.form()
+    device_id = form.get("device_id", "").strip().upper()
+    password  = form.get("password", "").strip()
+
+    if device_id not in DEVICES:
+        return HTMLResponse(ENTRY_PAGE.format(
+            error='<div class="err">Device ID not found — check the card that came with your device.</div>',
+            device_id=device_id
+        ), status_code=401)
+
+    if password != DEVICES[device_id]["password"]:
+        return HTMLResponse(ENTRY_PAGE.format(
+            error='<div class="err">Incorrect password — check the card that came with your device.</div>',
+            device_id=device_id
+        ), status_code=401)
+
+    request.session[f"auth_{device_id}"] = True
+    return RedirectResponse(f"/device/{device_id}", status_code=303)
+
+# ── Device login ──────────────────────────────────────────────
+@app.get("/device/{device_id}")
+def device_login_page(device_id: str, request: Request):
+    device_id = device_id.upper()
+    if device_id not in DEVICES:
+        raise HTTPException(404, "Device not found")
+    if is_authenticated(request, device_id):
         return FileResponse(DASHBOARD_HTML)
-    return {"status": "ThermoHub running. Place dashboard.html next to thermohub.py"}
+    return HTMLResponse(LOGIN_PAGE.format(device_id=device_id, error=""))
+
+@app.post("/device/{device_id}")
+async def device_login_submit(device_id: str, request: Request):
+    device_id = device_id.upper()
+    if device_id not in DEVICES:
+        raise HTTPException(404, "Device not found")
+    form = await request.form()
+    password = form.get("password", "")
+    if password == DEVICES[device_id]["password"]:
+        request.session[f"auth_{device_id}"] = True
+        return RedirectResponse(f"/device/{device_id}", status_code=303)
+    error = '<div class="err">Incorrect password — check the card that came with your device.</div>'
+    return HTMLResponse(LOGIN_PAGE.format(device_id=device_id, error=error), status_code=401)
+
+@app.get("/device/{device_id}/logout")
+def device_logout(device_id: str, request: Request):
+    device_id = device_id.upper()
+    request.session.pop(f"auth_{device_id}", None)
+    return RedirectResponse(f"/device/{device_id}", status_code=303)
+
+# ── Guard all API routes — ESP32 uses Authorization header, browser uses session
+def require_auth(device_id: str, request: Request):
+    device_id = device_id.upper()
+    if device_id not in DEVICES:
+        raise HTTPException(404, "Device not found")
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header == DEVICES[device_id]["password"]:
+        return device_id   # ESP32 auth via header
+    if is_authenticated(request, device_id):
+        return device_id   # Browser auth via session
+    raise HTTPException(401, "Unauthorized")
 
 # ── ESP32: POST telemetry ──────────────────────────────────────
 @app.post("/api/telemetry")
-def post_telemetry(data: TelemetryIn):
+def post_telemetry(data: TelemetryIn, request: Request):
+    device_id = request.headers.get("X-Device-ID", "").upper()
+    if device_id and device_id in DEVICES:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header != DEVICES[device_id]["password"]:
+            raise HTTPException(401, "Unauthorized")
     now = datetime.utcnow().isoformat()
 
     # -999 is the ESP32 sentinel for "no sensor connected" — treat as None
@@ -178,11 +385,30 @@ def post_telemetry(data: TelemetryIn):
     action = get_scheduled_action_now()
     response = {"status": "ok"}
 
+    # Push pid_mode config to ESP32 if it differs from what the device reported
+    with get_db() as conn:
+        row = conn.execute("SELECT value FROM config WHERE key='pid_mode'").fetchone()
+    if row:
+        cfg_mode = row["value"].strip('"').upper()  # stored as JSON string
+        reported_mode = (data.mode or "FAST").upper()
+        if cfg_mode in ("FAST", "ECO") and cfg_mode != reported_mode:
+            response["pid_mode"] = cfg_mode
+            log.info("Pushing mode change to ESP32: %s → %s", reported_mode, cfg_mode)
+
     if action:
         if action["type"] == "temp" and action["temp"] is not None and target_temp is not None:
-            if abs(action["temp"] - target_temp) >= 0.5:
-                response["scheduled_target"] = action["temp"]
-                log.info("Schedule temp override: %.1f°C", action["temp"])
+            # Build current slot key — only override if we're in a NEW slot since manual change
+            now_local = datetime.now()
+            current_slot_key = f"{now_local.strftime('%a')}_{action.get('slot_time', 'none')}"
+            manual_was_in_this_slot = (current_slot_key == last_manual_slot_key)
+
+            if not manual_was_in_this_slot:
+                # New slot fired after manual change — schedule resumes
+                if abs(action["temp"] - target_temp) >= 0.5:
+                    response["scheduled_target"] = action["temp"]
+                    log.info("Schedule temp override: %.1f°C (new slot: %s)", action["temp"], current_slot_key)
+            else:
+                log.debug("Schedule suppressed — user manually changed temp in slot %s", current_slot_key)
 
         elif action["type"] == "command" and action["command"]:
             with get_db() as conn:
@@ -202,6 +428,7 @@ def get_status():
 # ── Dashboard / ESP32: send command ───────────────────────────
 @app.post("/api/command")
 def post_command(body: CommandIn):
+    global last_manual_temp_ts, last_manual_slot_key
     valid = {"on", "off", "temp_up", "temp_down"}
     if body.command not in valid:
         raise HTTPException(400, f"Invalid command. Use one of: {valid}")
@@ -209,6 +436,26 @@ def post_command(body: CommandIn):
     # Update state immediately
     if body.command == "on":  device_state["power"] = True
     if body.command == "off": device_state["power"] = False
+
+    # Update target immediately so dashboard reflects change without waiting for ESP
+    if body.command == "temp_up":
+        current = device_state["target_temp"] or 21.0
+        device_state["target_temp"] = round(current + 0.5, 1)
+        last_manual_temp_ts = datetime.now().timestamp()
+        # Record which schedule slot is currently active — schedule only resumes on next slot
+        slot = get_scheduled_action_now()
+        now = datetime.now()
+        last_manual_slot_key = f"{now.strftime('%a')}_{slot['slot_time'] if slot else 'none'}"
+        log.info("Manual target → %.1f°C (slot key: %s)", device_state["target_temp"], last_manual_slot_key)
+
+    if body.command == "temp_down":
+        current = device_state["target_temp"] or 21.0
+        device_state["target_temp"] = round(current - 0.5, 1)
+        last_manual_temp_ts = datetime.now().timestamp()
+        slot = get_scheduled_action_now()
+        now = datetime.now()
+        last_manual_slot_key = f"{now.strftime('%a')}_{slot['slot_time'] if slot else 'none'}"
+        log.info("Manual target → %.1f°C (slot key: %s)", device_state["target_temp"], last_manual_slot_key)
 
     with get_db() as conn:
         conn.execute("INSERT INTO commands (ts, command, source) VALUES (?,?,'dashboard')",
@@ -384,7 +631,8 @@ def get_esp32_config():
 def get_scheduled_action_now() -> dict | None:
     """
     Return the current schedule slot if any.
-    Returns {"type": "temp", "temp": 21.0} or {"type": "command", "command": "on"} or None.
+    Returns {"type": "temp", "temp": 21.0, "slot_time": "07:00"} or
+            {"type": "command", "command": "on", "slot_time": "07:00"} or None.
     """
     now = datetime.now()
     day = now.strftime("%a")
@@ -401,8 +649,8 @@ def get_scheduled_action_now() -> dict | None:
         return None
     row = rows[0]
     if row["type"] == "command":
-        return {"type": "command", "command": row["command"]}
-    return {"type": "temp", "temp": float(row["temp"]) if row["temp"] else None}
+        return {"type": "command", "command": row["command"], "slot_time": row["time"]}
+    return {"type": "temp", "temp": float(row["temp"]) if row["temp"] else None, "slot_time": row["time"]}
 
 # ── STARTUP ───────────────────────────────────────────────────
 @app.on_event("startup")
