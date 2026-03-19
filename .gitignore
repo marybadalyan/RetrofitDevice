@@ -1,3 +1,10 @@
 .pio/
 .pio-core/
+.platformio-core/
 .venv/
+__pycache__/
+*.pyc
+*.db
+*.log
+.DS_Store
+.vscode/
