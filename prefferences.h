@@ -33,7 +33,7 @@ constexpr int kTempSensorPin = 14;
 // ── Diagnostics ───────────────────────────────────────────────
 constexpr uint8_t  kDiagnosticsLogLevel       = 2;
 constexpr uint32_t kHealthSnapshotIntervalMs   = 10000;
-// constexpr uint32_t kDefaultTargetTemperatureC = 21.0F;
+constexpr float kDefaultTargetTemperatureC = 21.0F;
 
 // ── Hub ───────────────────────────────────────────────────────
 constexpr const char* kHubHost = "nontheoretic-alyce-noncommunistic.ngrok-free.dev";

@@ -791,6 +791,173 @@ void test_hub_ai_hardware_failure_detection_and_recovery() {
     TEST_ASSERT_FALSE(model.insights().hardware_failure_detected);
 }
 
+// Rapid temperature oscillations crossing the setpoint > 6 times/hour should be detected.
+void test_hub_ai_oscillation_detection() {
+    HubAiInsights model;
+    HubAiInsights::LogEntry e{};
+    e.targetTemperatureC = 22.0F;
+    e.mode = HubAiInsights::Mode::COMFORT;
+    e.commandSent = HubAiInsights::CommandSent::NONE;
+
+    // Alternate below (21.8, error=+0.2 → sign=+1) and above (22.2, error=-0.2 → sign=-1).
+    // 8 ingests spaced 5 min apart produce 7 sign crossings, exceeding the threshold of 6.
+    for (int i = 0; i < 8; ++i) {
+        e.timestampMs = static_cast<uint64_t>(i) * 300000ULL;
+        e.roomTemperatureC = (i % 2 == 0) ? 21.8F : 22.2F;
+        model.ingest(e);
+    }
+
+    TEST_ASSERT_TRUE(model.insights().oscillation_detected);
+}
+
+// Heater commanded on but temperature rises too slowly: kp scale should increase.
+void test_hub_ai_slow_response_raises_kp() {
+    HubAiInsights::Config cfg;
+    cfg.minimumLearnedHeatingRateCPerSec = 0.005F;  // 2 C gap → expectedSec = 400 s
+    cfg.slowResponseFactor = 1.4F;                  // slow threshold = 560 s
+    HubAiInsights model(cfg);
+
+    HubAiInsights::LogEntry e{};
+    e.targetTemperatureC = 22.0F;
+    e.mode = HubAiInsights::Mode::COMFORT;
+
+    // Ingest 1: no command – makes hasPrevious_=true so updateControlQuality runs next tick.
+    e.timestampMs = 0;
+    e.roomTemperatureC = 20.0F;
+    e.commandSent = HubAiInsights::CommandSent::NONE;
+    model.ingest(e);
+
+    // Ingest 2: HEAT_UP with 2 C error → response tracking starts (returns early this ingest).
+    e.timestampMs = 1000;
+    e.commandSent = HubAiInsights::CommandSent::HEAT_UP;
+    model.ingest(e);
+
+    // Ingest 3: 601 s after tracking started, still 1 C below target – slow threshold exceeded.
+    e.timestampMs = 602000;      // 601 s after t=1000
+    e.roomTemperatureC = 21.0F;  // < 22.0 - 0.20 = 21.8 (target not reached)
+    e.commandSent = HubAiInsights::CommandSent::NONE;
+    model.ingest(e);
+
+    TEST_ASSERT_TRUE(model.insights().kp_scale > 1.0F);
+}
+
+// Temperature stuck far from setpoint over many samples should boost ki.
+void test_hub_ai_steady_state_error_boosts_ki() {
+    HubAiInsights model;
+    HubAiInsights::LogEntry e{};
+    e.targetTemperatureC = 22.0F;
+    e.roomTemperatureC = 21.0F;  // error = 1.0 C > steadyStateErrorThresholdC (0.6)
+    e.commandSent = HubAiInsights::CommandSent::NONE;
+    e.mode = HubAiInsights::Mode::COMFORT;
+
+    // 10 samples with tiny drift (0.001 C/step << minTempNoiseC 0.05) – 9 calls to
+    // updateControlQuality, all qualifying; persistentErrorSamples_ will reach 8.
+    for (int i = 0; i < 10; ++i) {
+        e.timestampMs = static_cast<uint64_t>(i + 1) * 60000ULL;
+        e.roomTemperatureC = 21.0F + static_cast<float>(i) * 0.001F;
+        model.ingest(e);
+    }
+
+    TEST_ASSERT_TRUE(model.insights().ki_scale > 1.0F);
+}
+
+// Confidence score should grow as more samples are ingested.
+void test_hub_ai_confidence_grows_with_sample_count() {
+    HubAiInsights model;
+    HubAiInsights::LogEntry e{};
+    e.targetTemperatureC = 22.0F;
+    e.roomTemperatureC = 22.0F;
+    e.commandSent = HubAiInsights::CommandSent::NONE;
+    e.mode = HubAiInsights::Mode::COMFORT;
+
+    const float initialConfidence = model.insights().confidence_score;
+
+    for (size_t i = 0; i < 200; ++i) {
+        e.timestampMs = static_cast<uint64_t>(i + 1) * 60000ULL;
+        model.ingest(e);
+    }
+
+    TEST_ASSERT_TRUE(model.insights().confidence_score > initialConfidence);
+    TEST_ASSERT_TRUE(model.insights().confidence_score >= 0.29F);  // sample component ≈ 0.30
+}
+
+// reset() must clear every detection flag and learned rate back to defaults.
+void test_hub_ai_reset_clears_all_state() {
+    HubAiInsights model;
+    HubAiInsights::LogEntry e{};
+    e.targetTemperatureC = 22.0F;
+    e.mode = HubAiInsights::Mode::COMFORT;
+    e.commandSent = HubAiInsights::CommandSent::NONE;
+
+    // Build up overshoot state.
+    e.timestampMs = 1000; e.roomTemperatureC = 22.0F; model.ingest(e);
+    e.timestampMs = 2000; e.roomTemperatureC = 23.8F; model.ingest(e);
+    e.timestampMs = 3000; e.roomTemperatureC = 22.0F; model.ingest(e);
+    e.timestampMs = 4000; e.roomTemperatureC = 23.7F; model.ingest(e);
+    TEST_ASSERT_TRUE(model.insights().overshoot_detected);
+
+    model.reset();
+
+    const HubAiInsights::SystemInsights& s = model.insights();
+    TEST_ASSERT_FALSE(s.overshoot_detected);
+    TEST_ASSERT_FALSE(s.oscillation_detected);
+    TEST_ASSERT_FALSE(s.window_open_detected);
+    TEST_ASSERT_FALSE(s.hardware_failure_detected);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 0.0F, s.confidence_score);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 0.0F, s.heating_rate);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 0.0F, s.cooling_rate);
+}
+
+// Duplicate timestamp must be silently rejected and must not corrupt overshoot state.
+void test_hub_ai_duplicate_timestamp_does_not_affect_overshoot() {
+    HubAiInsights model;
+    HubAiInsights::LogEntry e{};
+    e.targetTemperatureC = 22.0F;
+    e.mode = HubAiInsights::Mode::COMFORT;
+    e.commandSent = HubAiInsights::CommandSent::NONE;
+
+    e.timestampMs = 1000; e.roomTemperatureC = 21.0F; model.ingest(e);
+    // Attempt to inject a duplicate timestamp with an overshoot temperature – must be rejected.
+    e.timestampMs = 1000; e.roomTemperatureC = 24.0F; model.ingest(e);
+    e.timestampMs = 2000; e.roomTemperatureC = 21.0F; model.ingest(e);
+
+    TEST_ASSERT_FALSE(model.insights().overshoot_detected);
+}
+
+// Hardware failure evaluation is skipped if fewer than minHeatUpCommandsForFailureEval were sent.
+void test_hub_ai_hardware_failure_requires_min_heat_up_commands() {
+    HubAiInsights model;
+    HubAiInsights::LogEntry e{};
+    e.targetTemperatureC = 24.0F;
+    e.mode = HubAiInsights::Mode::COMFORT;
+    e.roomTemperatureC = 20.0F;
+
+    // Only ONE HEAT_UP in the window (threshold is 2) – failure must not be flagged.
+    e.timestampMs = 1000;  e.commandSent = HubAiInsights::CommandSent::HEAT_UP; model.ingest(e);
+    e.timestampMs = 422000; e.commandSent = HubAiInsights::CommandSent::NONE;
+    e.roomTemperatureC = 20.1F; model.ingest(e);  // window closes, only 1 command → no check
+
+    TEST_ASSERT_FALSE(model.insights().hardware_failure_detected);
+}
+
+// Window-open detection must not fire if no cooling baseline has been established yet.
+void test_hub_ai_window_open_not_detected_without_cooling_baseline() {
+    HubAiInsights model;
+    HubAiInsights::LogEntry e{};
+    e.targetTemperatureC = 22.0F;
+    e.mode = HubAiInsights::Mode::COMFORT;
+
+    // Establish heater-active context.
+    e.timestampMs = 0; e.roomTemperatureC = 22.0F;
+    e.commandSent = HubAiInsights::CommandSent::HEAT_UP; model.ingest(e);
+
+    // Sharp 3 C drop while heater was active – but no cooling baseline exists yet.
+    e.timestampMs = 30000; e.roomTemperatureC = 19.0F;
+    e.commandSent = HubAiInsights::CommandSent::NONE; model.ingest(e);
+
+    TEST_ASSERT_FALSE(model.insights().window_open_detected);
+}
+
 // ECO mode recommendation should bias to lower kp than COMFORT mode.
 void test_hub_ai_eco_kp_is_lower_than_comfort() {
     HubAiInsights model;
@@ -849,6 +1016,14 @@ int main(int, char**) {
     RUN_TEST(test_hub_ai_constant_data_does_not_fake_learning);
     RUN_TEST(test_hub_ai_hardware_failure_detection_and_recovery);
     RUN_TEST(test_hub_ai_eco_kp_is_lower_than_comfort);
+    RUN_TEST(test_hub_ai_oscillation_detection);
+    RUN_TEST(test_hub_ai_slow_response_raises_kp);
+    RUN_TEST(test_hub_ai_steady_state_error_boosts_ki);
+    RUN_TEST(test_hub_ai_confidence_grows_with_sample_count);
+    RUN_TEST(test_hub_ai_reset_clears_all_state);
+    RUN_TEST(test_hub_ai_duplicate_timestamp_does_not_affect_overshoot);
+    RUN_TEST(test_hub_ai_hardware_failure_requires_min_heat_up_commands);
+    RUN_TEST(test_hub_ai_window_open_not_detected_without_cooling_baseline);
 
     return UNITY_END();
 }
