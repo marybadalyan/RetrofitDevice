@@ -383,10 +383,10 @@ void loop() {
     rtOverrides.maxSteps = overrides.maxSteps;
     gPid.setRuntimeOverrides(rtOverrides);
 
-    // ── 7. PID tick (only when heater is on) ──────────────────
+    // ── 7. PID tick (only when heater is on and auto-control enabled) ────
     PidThermostatController::Result pidResult{};
 
-    if (gHeaterPowered) {
+    if (gHeaterPowered && gHubClient.autoControl()) {
         pidResult = gPid.tick(nowMs, gTargetTempC, roomTempC);
 
         if (pidResult.ranControlCycle) {

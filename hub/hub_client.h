@@ -39,6 +39,9 @@ public:
     const char* pendingMode() const   { return pendingMode_[0] ? pendingMode_ : nullptr; }
     void        clearPendingMode()    { pendingMode_[0] = '\0'; }
 
+    // Whether the hub wants the PID auto-control loop to run
+    bool autoControl() const          { return autoControl_; }
+
     void forceTelemetry() { lastTelemetryPostMs_ = 0; }
 private:
     void pollCommand(const WallClockSnapshot& wallNow);
@@ -50,6 +53,8 @@ private:
                                   char* outValue, size_t outValueSize);
     static bool extractJsonFloat(const String& payload, const char* key,
                                   float& outValue);
+    static bool extractJsonBool(const String& payload, const char* key,
+                                 bool& outValue);
 #endif
 
     HubReceiver& receiver_;
@@ -63,4 +68,5 @@ private:
     uint32_t lastTelemetryPostMs_ = 0;
     float    scheduledTargetTemp_ = 0.0f;
     char     pendingMode_[8]      = {};
+    bool     autoControl_         = true;
 };

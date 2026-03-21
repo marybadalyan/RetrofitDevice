@@ -260,12 +260,13 @@ class ConfigIn(BaseModel):
 
 # ── IN-MEMORY DEVICE STATE ────────────────────────────────────
 device_state = {
-    "room_temp":   None,
-    "target_temp": 21.0,
-    "power":       True,
-    "mode":        "FAST",
-    "pid":         {"p": 0, "i": 0, "d": 0, "steps": 0},
-    "last_seen":   None,
+    "room_temp":    None,
+    "target_temp":  21.0,
+    "power":        True,
+    "mode":         "FAST",
+    "pid":          {"p": 0, "i": 0, "d": 0, "steps": 0},
+    "last_seen":    None,
+    "auto_control": True,
 }
 
 # ── MANUAL OVERRIDE TRACKING ─────────────────────────────────
@@ -383,7 +384,7 @@ def post_telemetry(data: TelemetryIn, request: Request):
 
     # Check schedule for current slot
     action = get_scheduled_action_now()
-    response = {"status": "ok"}
+    response = {"status": "ok", "auto_control": device_state["auto_control"]}
 
     # Push pid_mode config to ESP32 if it differs from what the device reported
     with get_db() as conn:
@@ -424,6 +425,16 @@ def post_telemetry(data: TelemetryIn, request: Request):
 @app.get("/api/status")
 def get_status():
     return device_state
+
+# ── Dashboard: toggle auto control (PID) ──────────────────────
+class AutoControlIn(BaseModel):
+    enabled: bool
+
+@app.post("/api/autocontrol")
+def set_auto_control(body: AutoControlIn):
+    device_state["auto_control"] = body.enabled
+    log.info("Auto control %s", "enabled" if body.enabled else "disabled")
+    return {"status": "ok", "auto_control": body.enabled}
 
 # ── Dashboard / ESP32: send command ───────────────────────────
 @app.post("/api/command")
