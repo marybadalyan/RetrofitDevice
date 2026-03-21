@@ -268,7 +268,7 @@ void setup() {
         wifiManager.resetSettings();
     }
     wifiManager.autoConnect("ESP32-Setup");
-    Serial.printf("[WIFI] Connected — dashboard: https://%s/device/%s\n", kHubHost, DEVICE_ID);
+    Serial.printf("[WIFI] Connected — dashboard: http://%s:%d/device/%s\n", kHubHost, kHubPort, DEVICE_ID);
 #endif
 
     Serial.println();

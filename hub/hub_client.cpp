@@ -58,7 +58,7 @@ void HubClient::pollCommand(const WallClockSnapshot& wallNow) {
     http.setTimeout(kHubHttpTimeoutMs);
 
     char url[128] = {0};
-    snprintf(url, sizeof(url), "https://%s/api/command/pending", kHubHost);
+    snprintf(url, sizeof(url), "http://%s:%d/api/command/pending", kHubHost, kHubPort);
 
     if (!http.begin(url)) {
         hubReachable_ = false;
@@ -120,7 +120,7 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
     http.setTimeout(kHubHttpTimeoutMs);
 
     char url[128] = {0};
-    snprintf(url, sizeof(url), "https://%s/api/telemetry", kHubHost);
+    snprintf(url, sizeof(url), "http://%s:%d/api/telemetry", kHubHost, kHubPort);
 
     if (!http.begin(url)) {
         hubReachable_ = false;
