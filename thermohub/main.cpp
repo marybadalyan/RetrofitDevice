@@ -299,14 +299,17 @@ void setup() {
     gCommandScheduler.setEnabled(true);
 
 #ifndef REAL_SENSOR
+    gTargetTempC = MockRoom::roomTempC;
     gPid.reset(MockRoom::roomTempC);
-    Serial.printf("[MOCK] Season: %s | start=%.1f°C outside=%.1f°C target=%.1f°C\n",
+    Serial.printf("[MOCK] Season: %s | start=%.1f°C outside=%.1f°C target=%.1f°C (synced to room)\n",
                   MockRoom::kSeason == MockRoom::Season::WINTER ? "WINTER" : "SUMMER",
                   MockRoom::kStartTempC, MockRoom::kOutsideTempC, gTargetTempC);
 #else
     gTempSensor.begin();
-    gPid.reset(gTempSensor.readTemperatureC());
-    Serial.println("[SENSOR] DS18B20 active.");
+    const float initialTempC = gTempSensor.readTemperatureC();
+    gTargetTempC = initialTempC;
+    gPid.reset(initialTempC);
+    Serial.printf("[SENSOR] DS18B20 active. Initial temp: %.1f°C (target synced)\n", initialTempC);
 #endif
 
 #ifdef REAL_IR
@@ -383,10 +386,10 @@ void loop() {
     rtOverrides.maxSteps = overrides.maxSteps;
     gPid.setRuntimeOverrides(rtOverrides);
 
-    // ── 7. PID tick (only when heater is on) ──────────────────
+    // ── 7. PID tick (only when heater is on and auto-control enabled) ────
     PidThermostatController::Result pidResult{};
 
-    if (gHeaterPowered) {
+    if (gHeaterPowered && gHubClient.autoControl()) {
         pidResult = gPid.tick(nowMs, gTargetTempC, roomTempC);
 
         if (pidResult.ranControlCycle) {
@@ -457,7 +460,7 @@ void loop() {
     // ── 11. Execute commands ──────────────────────────────────
     Command cmd;
     while (gHubReceiver.poll(cmd)) {
-        Serial.printf("[CMD] %s\n", commandToString(cmd));
+        Serial.printf("[CMD] %s  target=%.1f°C  room=%.1f°C\n", commandToString(cmd), gTargetTempC, roomTempC);
         gLogger.log(wallNow, LogEventType::COMMAND_SENT, cmd, true);
 
         switch (cmd) {
@@ -491,16 +494,42 @@ void loop() {
 
         case Command::TEMP_UP:
             if (!gHeaterPowered) { Serial.println("[CMD] Ignored TEMP_UP — heater is off"); break; }
-            gTargetTempC += 0.5f;
-            Serial.printf("[CMD] Target -> %.1f C\n", gTargetTempC);
-            gHubClient.forceTelemetry();
+            if (gHubClient.autoControl()) {
+                // PID mode: shift target, PID will handle IR
+                gTargetTempC += 0.5f;
+                Serial.printf("[CMD] PID target -> %.1f C\n", gTargetTempC);
+                gHubClient.forceTelemetry();
+            } else {
+                // Manual mode: send IR directly, but keep gTargetTempC in sync
+                gTargetTempC += 0.5f;
+#ifdef REAL_IR
+                gIrSend.sendNEC((kNecDeviceAddress << 8) | kNecCommandTempUp, 32);
+#else
+                MockRoom::heaterSetpointC += 0.5f;
+#endif
+                Serial.printf("[CMD] Manual TEMP_UP — IR sent directly, target=%.1f\n", gTargetTempC);
+                gHubClient.forceTelemetry();
+            }
             break;
 
         case Command::TEMP_DOWN:
             if (!gHeaterPowered) { Serial.println("[CMD] Ignored TEMP_DOWN — heater is off"); break; }
-            gTargetTempC -= 0.5f;
-            Serial.printf("[CMD] Target -> %.1f C\n", gTargetTempC);
-            gHubClient.forceTelemetry();
+            if (gHubClient.autoControl()) {
+                // PID mode: shift target, PID will handle IR
+                gTargetTempC -= 0.5f;
+                Serial.printf("[CMD] PID target -> %.1f C\n", gTargetTempC);
+                gHubClient.forceTelemetry();
+            } else {
+                // Manual mode: send IR directly, but keep gTargetTempC in sync
+                gTargetTempC -= 0.5f;
+#ifdef REAL_IR
+                gIrSend.sendNEC((kNecDeviceAddress << 8) | kNecCommandTempDown, 32);
+#else
+                MockRoom::heaterSetpointC -= 0.5f;
+#endif
+                Serial.printf("[CMD] Manual TEMP_DOWN — IR sent directly, target=%.1f\n", gTargetTempC);
+                gHubClient.forceTelemetry();
+            }
             break;
 
         default:

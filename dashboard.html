@@ -189,6 +189,22 @@
     <div class="chart-wrap"><canvas id="liveChart"></canvas></div>
   </div>
 
+  <div class="card" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:20px;">
+    <div>
+      <div class="card-label" style="margin-bottom:4px;">Auto PID</div>
+      <p id="autoCtrlDesc" style="font-size:0.7rem;color:var(--muted);line-height:1.6;margin:0;">
+        PID is <strong style="color:var(--green)">active</strong> — heater adjusts automatically to reach the target above.
+      </p>
+    </div>
+    <button id="autoCtrlBtn" onclick="toggleAutoControl()"
+      style="flex-shrink:0;padding:12px 24px;border-radius:10px;border:2px solid var(--green);
+             background:rgba(74,140,92,.08);font-family:var(--mono);font-size:0.7rem;
+             letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
+             color:var(--green);font-weight:500;transition:all .2s;white-space:nowrap;">
+      ✦ Auto: ON
+    </button>
+  </div>
+
   <div style="display:flex;gap:12px;margin-top:16px;">
     <div class="card" style="flex:1;">
       <div class="card-label">Heating Mode</div>
@@ -316,6 +332,7 @@ async function poll(){
   if(d.power      !==undefined) st.power      = d.power;
   if(d.mode       !==undefined) st.mode       = d.mode;
   if(d.pid        !==undefined) st.pid        = d.pid;
+  if(d.auto_control!==undefined) updateAutoControlUI(d.auto_control);
   updateUI();
   pushLivePoint();
 }
@@ -516,6 +533,39 @@ async function loadSched(){
 
 // ── mode ──
 let currentMode = 'FAST';
+let autoControl = true;
+
+function updateAutoControlUI(enabled) {
+  autoControl = enabled;
+  const btn  = document.getElementById('autoCtrlBtn');
+  const stat = document.getElementById('autoCtrlStatus');
+  const desc = document.getElementById('autoCtrlDesc');
+  if (!btn) return;
+  if (enabled) {
+    btn.textContent = '✦ Auto: ON';
+    btn.style.borderColor = 'var(--green)';
+    btn.style.background  = 'rgba(74,140,92,.08)';
+    btn.style.color       = 'var(--green)';
+    desc.innerHTML = 'PID is <strong style="color:var(--green)">active</strong> — heater adjusts automatically to reach the target above.';
+  } else {
+    btn.textContent = '◻ Auto: OFF';
+    btn.style.borderColor = 'var(--border)';
+    btn.style.background  = 'var(--surface)';
+    btn.style.color       = 'var(--muted)';
+    desc.innerHTML = 'PID is <strong style="color:var(--muted)">off</strong> — use the target +/− to manually nudge the heater.';
+  }
+}
+
+function sendManual(cmd) {
+  api('/api/command','POST',{command: cmd})
+    .then(r => r ? toast(cmd === 'temp_up' ? '▲ Sent' : '▼ Sent') : toast('Failed'));
+}
+
+function toggleAutoControl() {
+  const next = !autoControl;
+  api('/api/autocontrol', 'POST', {enabled: next})
+    .then(r => { if (r) { updateAutoControlUI(next); toast(next ? 'Auto control ON' : 'Auto control OFF'); } });
+}
 
 function setMode(mode) {
   currentMode = mode;

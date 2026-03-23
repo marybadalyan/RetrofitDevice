@@ -13,6 +13,7 @@
 #if __has_include(<WiFi.h>) && __has_include(<HTTPClient.h>)
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #define HUBCLIENT_HAS_HTTP 1
 #else
 #define HUBCLIENT_HAS_HTTP 0
@@ -171,6 +172,14 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
         pendingMode_[sizeof(pendingMode_) - 1] = '\0';
         Serial.printf("[HUB] Mode change: %s\n", pendingMode_);
     }
+
+    bool autoCtrl = true;
+    if (extractJsonBool(response, "auto_control", autoCtrl)) {
+        if (autoCtrl != autoControl_) {
+            autoControl_ = autoCtrl;
+            Serial.printf("[HUB] Auto control: %s\n", autoCtrl ? "ON" : "OFF");
+        }
+    }
 #else
     (void)wallNow;
 #endif
@@ -211,6 +220,21 @@ bool HubClient::extractJsonString(const String& payload, const char* key,
     strncpy(outValue, value.c_str(), outValueSize - 1);
     outValue[outValueSize - 1] = '\0';
     return true;
+}
+
+bool HubClient::extractJsonBool(const String& payload, const char* key,
+                                 bool& outValue) {
+    if (!key) return false;
+    const String pattern = String("\"") + key + "\"";
+    const int keyPos = payload.indexOf(pattern);
+    if (keyPos < 0) return false;
+    const int colonPos = payload.indexOf(':', keyPos + pattern.length());
+    if (colonPos < 0) return false;
+    int i = colonPos + 1;
+    while (i < (int)payload.length() && payload[i] == ' ') ++i;
+    if (payload.substring(i, i + 4) == "true")  { outValue = true;  return true; }
+    if (payload.substring(i, i + 5) == "false") { outValue = false; return true; }
+    return false;
 }
 
 bool HubClient::extractJsonFloat(const String& payload, const char* key,
