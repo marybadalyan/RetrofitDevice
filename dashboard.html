@@ -191,9 +191,9 @@
 
   <div class="card" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:20px;">
     <div>
-      <div class="card-label" style="margin-bottom:4px;">Auto Control</div>
-      <p id="autoCtrlDesc" style="font-size:0.7rem;color:var(--muted);line-height:1.6;">
-        PID is <strong id="autoCtrlStatus" style="color:var(--green)">active</strong> — heater adjusts automatically to reach target.
+      <div class="card-label" style="margin-bottom:4px;">Auto PID</div>
+      <p id="autoCtrlDesc" style="font-size:0.7rem;color:var(--muted);line-height:1.6;margin:0;">
+        PID is <strong style="color:var(--green)">active</strong> — heater adjusts automatically to reach the target above.
       </p>
     </div>
     <button id="autoCtrlBtn" onclick="toggleAutoControl()"
@@ -546,16 +546,19 @@ function updateAutoControlUI(enabled) {
     btn.style.borderColor = 'var(--green)';
     btn.style.background  = 'rgba(74,140,92,.08)';
     btn.style.color       = 'var(--green)';
-    stat.textContent      = 'active';
-    stat.style.color      = 'var(--green)';
-    desc.innerHTML        = 'PID is <strong id="autoCtrlStatus" style="color:var(--green)">active</strong> — heater adjusts automatically to reach target.';
+    desc.innerHTML = 'PID is <strong style="color:var(--green)">active</strong> — heater adjusts automatically to reach the target above.';
   } else {
     btn.textContent = '◻ Auto: OFF';
     btn.style.borderColor = 'var(--border)';
     btn.style.background  = 'var(--surface)';
     btn.style.color       = 'var(--muted)';
-    desc.innerHTML        = 'PID is <strong id="autoCtrlStatus" style="color:var(--muted)">off</strong> — heater holds current state, no automatic adjustments.';
+    desc.innerHTML = 'PID is <strong style="color:var(--muted)">off</strong> — use the target +/− to manually nudge the heater.';
   }
+}
+
+function sendManual(cmd) {
+  api('/api/command','POST',{command: cmd})
+    .then(r => r ? toast(cmd === 'temp_up' ? '▲ Sent' : '▼ Sent') : toast('Failed'));
 }
 
 function toggleAutoControl() {

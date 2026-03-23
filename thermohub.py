@@ -266,7 +266,7 @@ device_state = {
     "mode":         "FAST",
     "pid":          {"p": 0, "i": 0, "d": 0, "steps": 0},
     "last_seen":    None,
-    "auto_control": True,
+    "auto_control": False,
 }
 
 # ── MANUAL OVERRIDE TRACKING ─────────────────────────────────
@@ -362,7 +362,8 @@ def post_telemetry(data: TelemetryIn, request: Request):
 
     # Update live state — only overwrite if real values received
     if room_temp   is not None: device_state["room_temp"]   = room_temp
-    if target_temp is not None: device_state["target_temp"] = target_temp
+    if target_temp is not None and device_state["auto_control"]:
+        device_state["target_temp"] = target_temp
     if data.power  is not None: device_state["power"]       = data.power
     if data.mode   is not None: device_state["mode"]        = data.mode
     device_state["pid"] = {
@@ -433,6 +434,9 @@ class AutoControlIn(BaseModel):
 @app.post("/api/autocontrol")
 def set_auto_control(body: AutoControlIn):
     device_state["auto_control"] = body.enabled
+    with get_db() as conn:
+        conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('auto_control', ?)",
+                     (json.dumps(body.enabled),))
     log.info("Auto control %s", "enabled" if body.enabled else "disabled")
     return {"status": "ok", "auto_control": body.enabled}
 
@@ -453,7 +457,6 @@ def post_command(body: CommandIn):
         current = device_state["target_temp"] or 21.0
         device_state["target_temp"] = round(current + 0.5, 1)
         last_manual_temp_ts = datetime.now().timestamp()
-        # Record which schedule slot is currently active — schedule only resumes on next slot
         slot = get_scheduled_action_now()
         now = datetime.now()
         last_manual_slot_key = f"{now.strftime('%a')}_{slot['slot_time'] if slot else 'none'}"
@@ -467,6 +470,11 @@ def post_command(body: CommandIn):
         now = datetime.now()
         last_manual_slot_key = f"{now.strftime('%a')}_{slot['slot_time'] if slot else 'none'}"
         log.info("Manual target → %.1f°C (slot key: %s)", device_state["target_temp"], last_manual_slot_key)
+
+    if body.command in ("temp_up", "temp_down"):
+        with get_db() as conn:
+            conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('target_temp', ?)",
+                         (json.dumps(device_state["target_temp"]),))
 
     with get_db() as conn:
         conn.execute("INSERT INTO commands (ts, command, source) VALUES (?,?,'dashboard')",
@@ -667,4 +675,9 @@ def get_scheduled_action_now() -> dict | None:
 @app.on_event("startup")
 def startup():
     init_db()
+    with get_db() as conn:
+        for key in ("auto_control", "target_temp"):
+            row = conn.execute("SELECT value FROM config WHERE key=?", (key,)).fetchone()
+            if row is not None:
+                device_state[key] = json.loads(row["value"])
     log.info("ThermoHub ready — visit http://localhost:5000")

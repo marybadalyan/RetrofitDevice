@@ -13,6 +13,7 @@
 #if __has_include(<WiFi.h>) && __has_include(<HTTPClient.h>)
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #define HUBCLIENT_HAS_HTTP 1
 #else
 #define HUBCLIENT_HAS_HTTP 0

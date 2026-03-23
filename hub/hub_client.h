@@ -68,5 +68,5 @@ private:
     uint32_t lastTelemetryPostMs_ = 0;
     float    scheduledTargetTemp_ = 0.0f;
     char     pendingMode_[8]      = {};
-    bool     autoControl_         = true;
+    bool     autoControl_         = false;
 };
