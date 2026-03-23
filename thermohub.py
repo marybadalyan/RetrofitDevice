@@ -397,6 +397,16 @@ def post_telemetry(data: TelemetryIn, request: Request):
             response["pid_mode"] = cfg_mode
             log.info("Pushing mode change to ESP32: %s → %s", reported_mode, cfg_mode)
 
+    # Push pid_mode config to ESP32 if it differs from what the device reported
+    with get_db() as conn:
+        row = conn.execute("SELECT value FROM config WHERE key='pid_mode'").fetchone()
+    if row:
+        cfg_mode = row["value"].strip('"').upper()  # stored as JSON string
+        reported_mode = (data.mode or "FAST").upper()
+        if cfg_mode in ("FAST", "ECO") and cfg_mode != reported_mode:
+            response["pid_mode"] = cfg_mode
+            log.info("Pushing mode change to ESP32: %s → %s", reported_mode, cfg_mode)
+
     if action:
         if action["type"] == "temp" and action["temp"] is not None and target_temp is not None:
             # Build current slot key — only override if we're in a NEW slot since manual change
