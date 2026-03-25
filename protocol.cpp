@@ -23,7 +23,7 @@ bool isAddressMatch(const Packet& packet) {
 }
 }  // namespace
 
-bool encodeCommand(Command command, uint32_t& outCommandByte) {
+bool encodeCommand(Command command, uint8_t& outCommandByte) {
     switch (command) {
         case Command::ON_OFF:
             outCommandByte = kNecCommandToggle;

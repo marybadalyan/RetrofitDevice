@@ -140,47 +140,26 @@
 
 <!-- CONTROL -->
 <div class="page active" id="page-control">
-  <div class="temp-hero">
-    <div>
+  <div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;padding:32px;gap:32px;">
+    <div style="flex:1;">
       <div class="big-temp" id="roomTempDisp">—<sup>°C</sup></div>
       <div class="temp-label">Room temperature</div>
-      <div class="pid-mini" id="pidRow">
-        <span>P: <b id="pP">—</b></span>
-        <span>I: <b id="pI">—</b></span>
-        <span>D: <b id="pD">—</b></span>
-        <span>Steps: <b id="pS">—</b></span>
-      </div>
     </div>
-    <div id="modeDisp"></div>
-  </div>
-
-  <div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-around;padding:28px;gap:20px">
-    <div class="power-wrap">
-      <button class="power-btn" id="powerBtn" onclick="togglePower()">⏻</button>
-      <div class="power-lbl" id="powerLbl">OFF</div>
-    </div>
-    <div style="width:1px;height:80px;background:var(--border)"></div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
-      <div class="target-label">Target</div>
-      <div style="display:flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:12px;overflow:hidden;">
-        <button onclick="stepTarget(-0.5)"
-          style="width:44px;height:56px;border:none;background:var(--surface);
-                 font-size:1.4rem;cursor:pointer;color:var(--text);
-                 border-right:1px solid var(--border);transition:background .15s;"
-          onmouseover="this.style.background='var(--accent)';this.style.color='#fff'"
-          onmouseout="this.style.background='var(--surface)';this.style.color='var(--text)'">−</button>
-        <div style="display:flex;align-items:baseline;gap:3px;padding:0 14px;background:var(--card)">
-          <span id="targetDisp2" style="font-family:var(--serif);font-size:2.2rem;
-                color:var(--accent);letter-spacing:-1px;min-width:52px;text-align:center">21.0</span>
-          <span style="font-family:var(--serif);font-size:1.5rem;color:var(--muted)">°C</span>
-        </div>
-        <button onclick="stepTarget(+0.5)"
-          style="width:44px;height:56px;border:none;background:var(--surface);
-                 font-size:1.4rem;cursor:pointer;color:var(--text);
-                 border-left:1px solid var(--border);transition:background .15s;"
-          onmouseover="this.style.background='var(--accent)';this.style.color='#fff'"
-          onmouseout="this.style.background='var(--surface)';this.style.color='var(--text)'">+</button>
+    <div style="display:flex;align-items:center;justify-content:center;gap:20px;flex-shrink:0">
+      <button onclick="stepTarget(-0.5)"
+        style="width:56px;height:56px;border-radius:50%;border:none;background:var(--surface);
+               font-size:1.8rem;cursor:pointer;color:var(--text);transition:background .15s;"
+        onmouseover="this.style.background='var(--accent)';this.style.color='#fff'"
+        onmouseout="this.style.background='var(--surface)';this.style.color='var(--text)'">−</button>
+      <div class="power-wrap">
+        <button class="power-btn" id="powerBtn" onclick="togglePower()">⏻</button>
+        <div class="power-lbl" id="powerLbl">OFF</div>
       </div>
+      <button onclick="stepTarget(+0.5)"
+        style="width:56px;height:56px;border-radius:50%;border:none;background:var(--surface);
+               font-size:1.8rem;cursor:pointer;color:var(--text);transition:background .15s;"
+        onmouseover="this.style.background='var(--accent)';this.style.color='#fff'"
+        onmouseout="this.style.background='var(--surface)';this.style.color='var(--text)'">+</button>
     </div>
   </div>
 
@@ -189,20 +168,67 @@
     <div class="chart-wrap"><canvas id="liveChart"></canvas></div>
   </div>
 
-  <div class="card" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:20px;">
-    <div>
-      <div class="card-label" style="margin-bottom:4px;">Auto PID</div>
-      <p id="autoCtrlDesc" style="font-size:0.7rem;color:var(--muted);line-height:1.6;margin:0;">
-        PID is <strong style="color:var(--green)">active</strong> — heater adjusts automatically to reach the target above.
-      </p>
+  <div class="card" style="margin-top:16px;background:linear-gradient(135deg,var(--card) 0%,rgba(74,140,92,.02) 100%);">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:28px;margin-bottom:18px;">
+      <div style="flex:1">
+        <div class="card-label">Auto PID Control</div>
+        <p id="autoCtrlDesc" style="font-size:0.75rem;color:var(--muted);line-height:1.7;margin:0;max-width:400px;">
+          PID is <strong style="color:var(--green)">active</strong> — heater adjusts automatically to reach the target.
+        </p>
+      </div>
+      <div style="display:flex;align-items:center;gap:32px;flex-shrink:0">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:8px;background:var(--surface);padding:18px 24px;border-radius:16px;border:1px solid var(--border);min-width:220px;">
+          <div style="font-size:0.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-weight:500;">Target</div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <button onclick="stepTarget(-0.5)"
+              style="width:44px;height:44px;border:none;background:var(--surface);
+                     font-size:1.4rem;cursor:pointer;color:var(--text);
+                     border-radius:8px;transition:all .15s;padding:0;"
+              onmouseover="this.style.background='var(--accent)';this.style.color='#fff'"
+              onmouseout="this.style.background='var(--surface)';this.style.color='var(--text)'">−</button>
+            <div style="display:flex;align-items:baseline;gap:2px;padding:0 12px;">
+              <span id="targetDisp2" style="font-family:var(--serif);font-size:2rem;
+                    color:var(--accent);letter-spacing:-1px;font-weight:500;">21.0</span>
+              <span style="font-family:var(--serif);font-size:1.1rem;color:var(--muted)">°</span>
+            </div>
+            <button onclick="stepTarget(+0.5)"
+              style="width:44px;height:44px;border:none;background:var(--surface);
+                     font-size:1.4rem;cursor:pointer;color:var(--text);
+                     border-radius:8px;transition:all .15s;padding:0;"
+              onmouseover="this.style.background='var(--accent)';this.style.color='#fff'"
+              onmouseout="this.style.background='var(--surface)';this.style.color='var(--text)'">+</button>
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:14px;cursor:pointer;flex-shrink:0;">
+          <div style="position:relative;width:56px;height:32px;background:var(--surface);border:1px solid var(--border);border-radius:16px;transition:all .3s;">
+            <input type="checkbox" id="autoCtrlToggle" onclick="toggleAutoControl()" style="display:none;">
+            <div id="autoToggleSwitch" style="position:absolute;width:26px;height:26px;background:var(--green);border-radius:50%;top:2px;left:2px;transition:all .3s;box-shadow:0 2px 6px rgba(74,140,92,.3);">
+            </div>
+          </div>
+          <span style="font-family:var(--mono);font-size:0.7rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--text);font-weight:500;">Auto</span>
+        </label>
+      </div>
     </div>
-    <button id="autoCtrlBtn" onclick="toggleAutoControl()"
-      style="flex-shrink:0;padding:12px 24px;border-radius:10px;border:2px solid var(--green);
-             background:rgba(74,140,92,.08);font-family:var(--mono);font-size:0.7rem;
-             letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
-             color:var(--green);font-weight:500;transition:all .2s;white-space:nowrap;">
-      ✦ Auto: ON
-    </button>
+    <div style="display:flex;gap:20px;padding-top:14px;border-top:1px solid rgba(74,140,92,.1);">
+      <div style="flex:1;display:flex;gap:16px;font-size:0.75rem;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="color:var(--muted);letter-spacing:0.5px;">P:</span>
+          <b id="pP" style="color:var(--accent);font-weight:500;min-width:40px;">—</b>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="color:var(--muted);letter-spacing:0.5px;">I:</span>
+          <b id="pI" style="color:var(--accent);font-weight:500;min-width:40px;">—</b>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="color:var(--muted);letter-spacing:0.5px;">D:</span>
+          <b id="pD" style="color:var(--accent);font-weight:500;min-width:40px;">—</b>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="color:var(--muted);letter-spacing:0.5px;">Steps:</span>
+          <b id="pS" style="color:var(--accent);font-weight:500;min-width:40px;">—</b>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div style="display:flex;gap:12px;margin-top:16px;">
@@ -537,21 +563,14 @@ let autoControl = true;
 
 function updateAutoControlUI(enabled) {
   autoControl = enabled;
-  const btn  = document.getElementById('autoCtrlBtn');
-  const stat = document.getElementById('autoCtrlStatus');
+  const toggle = document.getElementById('autoToggleSwitch');
   const desc = document.getElementById('autoCtrlDesc');
-  if (!btn) return;
+  if (!toggle) return;
   if (enabled) {
-    btn.textContent = '✦ Auto: ON';
-    btn.style.borderColor = 'var(--green)';
-    btn.style.background  = 'rgba(74,140,92,.08)';
-    btn.style.color       = 'var(--green)';
+    toggle.style.left = '28px';
     desc.innerHTML = 'PID is <strong style="color:var(--green)">active</strong> — heater adjusts automatically to reach the target above.';
   } else {
-    btn.textContent = '◻ Auto: OFF';
-    btn.style.borderColor = 'var(--border)';
-    btn.style.background  = 'var(--surface)';
-    btn.style.color       = 'var(--muted)';
+    toggle.style.left = '2px';
     desc.innerHTML = 'PID is <strong style="color:var(--muted)">off</strong> — use the target +/− to manually nudge the heater.';
   }
 }

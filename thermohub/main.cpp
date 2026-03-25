@@ -26,7 +26,7 @@
 #endif
 
 #ifdef REAL_IR_TX
-#include <IRsend.h>
+#include "IRSender.h"
 #endif
 
 #ifdef REAL_OLED
@@ -132,7 +132,7 @@ namespace {
 #endif
 
 #ifdef REAL_IR_TX
-    IRsend gIrSend(kIrTxPin);
+    IRSender gIrSend;
 #endif
 
 #ifdef REAL_OLED
@@ -414,13 +414,13 @@ void loop() {
                 gAdaptive.onControlStepsSent(nowMs, roomTempC, pidResult.steps);
 
 #ifdef REAL_IR_TX
-                const uint32_t irCmd = pidResult.steps > 0 ? kNecCommandTempUp : kNecCommandTempDown;
+                const Command irCmd = pidResult.steps > 0 ? Command::TEMP_UP : Command::TEMP_DOWN;
                 for (int s = 0; s < abs(pidResult.steps); s++) {
-                    gIrSend.sendNEC(irCmd, 32);
+                    gIrSend.sendCommand(irCmd);
                     delay(100);
                 }
-                Serial.printf("[IR] Sent %s x%d (cmd=0x%02X)\n",
-                              gLastIrCmd, abs(pidResult.steps), irCmd);
+                Serial.printf("[IR] Sent %s x%d\n",
+                              gLastIrCmd, abs(pidResult.steps));
 #else
                 Serial.printf("[IR]  -> %s x%d\n", gLastIrCmd, abs(pidResult.steps));
 #endif
@@ -474,8 +474,8 @@ void loop() {
         case Command::ON_OFF:
             gHeaterPowered = !gHeaterPowered;
 #ifdef REAL_IR_TX
-            gIrSend.sendNEC(kNecCommandToggle, 32);
-            Serial.printf("[IR] Sent TOGGLE (cmd=0x%02X)\n", kNecCommandToggle);
+            gIrSend.sendCommand(Command::ON_OFF);
+            Serial.printf("[IR] Sent ON/OFF\n");
 #endif
             if (gHeaterPowered) {
 #ifndef REAL_TEMP_SENSOR
@@ -499,7 +499,7 @@ void loop() {
                 // Manual mode: send IR directly, but keep gTargetTempC in sync
                 gTargetTempC += 0.5f;
 #ifdef REAL_IR_TX
-                gIrSend.sendNEC(kNecCommandTempUp, 32);
+                gIrSend.sendCommand(Command::TEMP_UP);
 #else
                 MockRoom::heaterSetpointC += 0.5f;
 #endif
@@ -519,7 +519,7 @@ void loop() {
                 // Manual mode: send IR directly, but keep gTargetTempC in sync
                 gTargetTempC -= 0.5f;
 #ifdef REAL_IR_TX
-                gIrSend.sendNEC(kNecCommandTempDown, 32);
+                gIrSend.sendCommand(Command::TEMP_DOWN);
 #else
                 MockRoom::heaterSetpointC -= 0.5f;
 #endif
