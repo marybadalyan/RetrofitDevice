@@ -16,16 +16,16 @@
 
 // ── HARDWARE FLAGS ────────────────────────────────────────────
 // Set in platformio.ini build_flags:
-//   -DREAL_SENSOR   → DS18B20 temperature sensor connected
-//   -DREAL_IR       → IR transmitter connected
+//   -DREAL_TEMP_SENSOR   → DS18B20 temperature sensor connected
+//   -DREAL_IR_TX       → IR transmitter connected
 //   -DREAL_OLED     → 0.96" SSD1306 OLED connected
 // No flags = mock room simulation, no hardware needed.
 
-#ifdef REAL_SENSOR
+#ifdef REAL_TEMP_SENSOR
 #include "room_temp_sensor.h"
 #endif
 
-#ifdef REAL_IR
+#ifdef REAL_IR_TX
 #include <IRsend.h>
 #endif
 
@@ -36,7 +36,7 @@
 #endif
 
 // ── MOCK ROOM MODEL ───────────────────────────────────────────
-#ifndef REAL_SENSOR
+#ifndef REAL_TEMP_SENSOR
 namespace MockRoom {
     enum class Season { WINTER, SUMMER };
     constexpr Season kSeason = Season::WINTER;  // ← toggle to test summer
@@ -78,7 +78,7 @@ namespace MockRoom {
         }
     }
 } // namespace MockRoom
-#endif // REAL_SENSOR
+#endif // REAL_TEMP_SENSOR
 
 // ── PROVISION ────────────────────────────────────────────────
 #define PROVISION_BUTTON_GPIO 0
@@ -127,11 +127,11 @@ namespace {
     const char* gLastIrCmd   = "none";
     int         gLastIrSteps = 0;
 
-#ifdef REAL_SENSOR
+#ifdef REAL_TEMP_SENSOR
     RoomTempSensor gTempSensor;
 #endif
 
-#ifdef REAL_IR
+#ifdef REAL_IR_TX
     IRsend gIrSend(kIrTxPin);
 #endif
 
@@ -189,7 +189,7 @@ void onHeaterTurnedOn(uint32_t nowMs, const WallClockSnapshot& wallNow,
     gHeaterOnSnapshot = wallNow;
     Serial.printf("[HEAT] ON  at %02d:%02d — room %.1f°C, target %.1f°C\n",
                   wallNow.hour, wallNow.minute, roomTempC, targetTempC);
-    gLogger.log(wallNow, LogEventType::STATE_CHANGE, Command::ON, true);
+    gLogger.log(wallNow, LogEventType::STATE_CHANGE, Command::ON_OFF, true);
 }
 
 void onHeaterTurnedOff(uint32_t nowMs, const WallClockSnapshot& wallNow,
@@ -202,7 +202,7 @@ void onHeaterTurnedOff(uint32_t nowMs, const WallClockSnapshot& wallNow,
     Serial.printf("[HEAT] OFF at %02d:%02d — ran %um%02us | %.1f°C → %.1f°C (%.1f° rise) | target was %.1f°C\n",
                   wallNow.hour, wallNow.minute, durationMin, durationSec,
                   gRoomAtOnC, roomTempC, rise, gTargetAtOnC);
-    gLogger.log(wallNow, LogEventType::STATE_CHANGE, Command::OFF, true);
+    gLogger.log(wallNow, LogEventType::STATE_CHANGE, Command::ON_OFF, true);
     gHeaterWasOn = false;
 }
 
@@ -298,7 +298,7 @@ void setup() {
     gHubConnectivity.begin(gHubReceiver, gWallClock);
     gCommandScheduler.setEnabled(true);
 
-#ifndef REAL_SENSOR
+#ifndef REAL_TEMP_SENSOR
     gTargetTempC = MockRoom::roomTempC;
     gPid.reset(MockRoom::roomTempC);
     Serial.printf("[MOCK] Season: %s | start=%.1f°C outside=%.1f°C target=%.1f°C (synced to room)\n",
@@ -312,7 +312,7 @@ void setup() {
     Serial.printf("[SENSOR] DS18B20 active. Initial temp: %.1f°C (target synced)\n", initialTempC);
 #endif
 
-#ifdef REAL_IR
+#ifdef REAL_IR_TX
     gIrSend.begin();
     Serial.printf("[IR] Transmitter ready on GPIO %d\n", kIrTxPin);
 #endif
@@ -341,7 +341,7 @@ void loop() {
     static uint32_t lastTelemetryMs = 0;
 
     // ── 1. Read room temperature ──────────────────────────────
-#ifndef REAL_SENSOR
+#ifndef REAL_TEMP_SENSOR
     MockRoom::heaterOn = gHeaterPowered;
     MockRoom::update(nowMs);
     const float roomTempC = MockRoom::roomTempC;
@@ -407,25 +407,32 @@ void loop() {
                 gLastIrCmd     = pidResult.steps > 0 ? "TEMP_UP" : "TEMP_DOWN";
                 gLastIrSteps   = pidResult.steps;
 
-#ifndef REAL_SENSOR
+#ifndef REAL_TEMP_SENSOR
                 MockRoom::applySteps(pidResult.steps, gTargetTempC);
                 Serial.printf("[MOCK] heaterSetpoint now %.1f°C\n", MockRoom::heaterSetpointC);
 #endif
                 gAdaptive.onControlStepsSent(nowMs, roomTempC, pidResult.steps);
 
-#ifdef REAL_IR
-                const uint8_t irCmd = pidResult.steps > 0 ? kNecCommandTempUp : kNecCommandTempDown;
+#ifdef REAL_IR_TX
+                const uint32_t irCmd = pidResult.steps > 0 ? kNecCommandTempUp : kNecCommandTempDown;
                 for (int s = 0; s < abs(pidResult.steps); s++) {
-                    gIrSend.sendNEC((kNecDeviceAddress << 8) | irCmd, 32);
+                    gIrSend.sendNEC(irCmd, 32);
                     delay(100);
                 }
-                Serial.printf("[IR] Sent %s x%d (NEC 0x%04X)\n",
-                              gLastIrCmd, abs(pidResult.steps),
-                              (kNecDeviceAddress << 8) | irCmd);
+                Serial.printf("[IR] Sent %s x%d (cmd=0x%02X)\n",
+                              gLastIrCmd, abs(pidResult.steps), irCmd);
 #else
                 Serial.printf("[IR]  -> %s x%d\n", gLastIrCmd, abs(pidResult.steps));
 #endif
             }
+        }
+    }
+
+    // ── 8. Idle log when PID is off ───────────────────────────
+    if (!gHubClient.autoControl()) {
+        if (pidResult.ranControlCycle || (nowMs - lastTelemetryMs >= 10000)) {
+            Serial.printf("[IDLE] room=%.2f°C target=%.2f°C power=%s\n",
+                          roomTempC, gTargetTempC, gHeaterPowered ? "ON" : "OFF");
         }
     }
 
@@ -464,30 +471,19 @@ void loop() {
         gLogger.log(wallNow, LogEventType::COMMAND_SENT, cmd, true);
 
         switch (cmd) {
-        case Command::ON:
-            if (!gHeaterPowered) {
-                gHeaterPowered = true;
-#ifdef REAL_IR
-                gIrSend.sendNEC((kNecDeviceAddress << 8) | kNecCommandOn, 32);
-                Serial.printf("[IR] Sent ON (NEC 0x%04X)\n",
-                              (kNecDeviceAddress << 8) | kNecCommandOn);
+        case Command::ON_OFF:
+            gHeaterPowered = !gHeaterPowered;
+#ifdef REAL_IR_TX
+            gIrSend.sendNEC(kNecCommandToggle, 32);
+            Serial.printf("[IR] Sent TOGGLE (cmd=0x%02X)\n", kNecCommandToggle);
 #endif
-#ifndef REAL_SENSOR
+            if (gHeaterPowered) {
+#ifndef REAL_TEMP_SENSOR
                 MockRoom::heaterSetpointC = gTargetTempC;
 #endif
                 gPid.reset(roomTempC);
                 onHeaterTurnedOn(nowMs, wallNow, roomTempC, gTargetTempC);
-            }
-            break;
-
-        case Command::OFF:
-            if (gHeaterPowered) {
-                gHeaterPowered = false;
-#ifdef REAL_IR
-                gIrSend.sendNEC((kNecDeviceAddress << 8) | kNecCommandOff, 32);
-                Serial.printf("[IR] Sent OFF (NEC 0x%04X)\n",
-                              (kNecDeviceAddress << 8) | kNecCommandOff);
-#endif
+            } else {
                 onHeaterTurnedOff(nowMs, wallNow, roomTempC);
             }
             break;
@@ -502,8 +498,8 @@ void loop() {
             } else {
                 // Manual mode: send IR directly, but keep gTargetTempC in sync
                 gTargetTempC += 0.5f;
-#ifdef REAL_IR
-                gIrSend.sendNEC((kNecDeviceAddress << 8) | kNecCommandTempUp, 32);
+#ifdef REAL_IR_TX
+                gIrSend.sendNEC(kNecCommandTempUp, 32);
 #else
                 MockRoom::heaterSetpointC += 0.5f;
 #endif
@@ -522,8 +518,8 @@ void loop() {
             } else {
                 // Manual mode: send IR directly, but keep gTargetTempC in sync
                 gTargetTempC -= 0.5f;
-#ifdef REAL_IR
-                gIrSend.sendNEC((kNecDeviceAddress << 8) | kNecCommandTempDown, 32);
+#ifdef REAL_IR_TX
+                gIrSend.sendNEC(kNecCommandTempDown, 32);
 #else
                 MockRoom::heaterSetpointC -= 0.5f;
 #endif

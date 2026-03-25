@@ -23,8 +23,8 @@ Do not flash the same entrypoint to both boards.
 The physical remote command bytes are configured in `prefferences.h`:
 
 - `kNecDeviceAddress`
-- `kNecCommandOn`
-- `kNecCommandOff`
+- `kNecCommandToggle`
+- `kNecCommandToggle`
 - `kNecCommandTempUp`
 - `kNecCommandTempDown`
 

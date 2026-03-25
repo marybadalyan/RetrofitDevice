@@ -16,8 +16,7 @@ static inline void ledcWrite(int, int) {}
 namespace {
 bool isValidCommand(Command command) {
     switch (command) {
-        case Command::ON:
-        case Command::OFF:
+        case Command::ON_OFF:
         case Command::TEMP_UP:
         case Command::TEMP_DOWN:
             return true;

@@ -362,8 +362,7 @@ def post_telemetry(data: TelemetryIn, request: Request):
 
     # Update live state — only overwrite if real values received
     if room_temp   is not None: device_state["room_temp"]   = room_temp
-    if target_temp is not None and device_state["auto_control"]:
-        device_state["target_temp"] = target_temp
+    if target_temp is not None: device_state["target_temp"] = target_temp
     if data.power  is not None: device_state["power"]       = data.power
     if data.mode   is not None: device_state["mode"]        = data.mode
     device_state["pid"] = {

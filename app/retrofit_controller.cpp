@@ -91,11 +91,8 @@ bool RetrofitController::chooseNextCommand(uint32_t nowMs,
 
 bool RetrofitController::applyThermostatControlCommand(Command command) {
     switch (command) {
-        case Command::ON:
-            powerEnabled_ = true;
-            return true;
-        case Command::OFF:
-            powerEnabled_ = false;
+        case Command::ON_OFF:
+            powerEnabled_ = !powerEnabled_;
             return true;
         case Command::TEMP_UP:
             targetTemperatureC_ += 1.0F;
@@ -180,9 +177,7 @@ void RetrofitController::sendCommand(Command command, const WallClockSnapshot& w
     lastTxFailure_ = TxFailureCode::NONE;
 
     logger_.log(wallNow, LogEventType::COMMAND_SENT, command, true, static_cast<uint8_t>(TxFailureCode::NONE));
-    if (command == Command::ON) {
-        heaterCommandedOn_ = true;
-    } else if (command == Command::OFF) {
-        heaterCommandedOn_ = false;
+    if (command == Command::ON_OFF) {
+        heaterCommandedOn_ = !heaterCommandedOn_;
     }
 }

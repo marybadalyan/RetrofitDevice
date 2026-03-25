@@ -16,11 +16,8 @@ constexpr int LOW = 0;
 
 bool Heater::applyCommand(Command command) {
     switch (command) {
-        case Command::ON:
-            powerEnabled_ = true;
-            return true;
-        case Command::OFF:
-            powerEnabled_ = false;
+        case Command::ON_OFF:
+        powerEnabled_ = !powerEnabled_;
             return true;
         case Command::TEMP_UP:
         case Command::TEMP_DOWN:
@@ -33,6 +30,11 @@ bool Heater::applyCommand(Command command) {
 bool Heater::powerEnabled() const {
     return powerEnabled_;
 }
+
+void Heater::setPowerEnabled(bool enabled) {
+    powerEnabled_ = enabled;
+}
+
 
 void DisplayDriver::begin() {}
 
@@ -64,7 +66,7 @@ void CommandStatusLed::begin() {
     setColor(false, false, false);
 }
 
-void CommandStatusLed::showCommand(Command command) {
+void CommandStatusLed::showCommand(Command command, bool isPowerEnabled) {
 #if __has_include(<Arduino.h>)
     if (!kStatusLedEnabled) {
         return;
@@ -72,12 +74,15 @@ void CommandStatusLed::showCommand(Command command) {
 #endif
 
     switch (command) {
-        case Command::ON:
+        case Command::ON_OFF:
+        if(isPowerEnabled) {
             setColor(false, true, false);   // Green
             break;
-        case Command::OFF:
+        }
+        else {
             setColor(true, false, false);   // Red
             break;
+        }
         case Command::TEMP_UP:
             setColor(false, false, true);   // Blue
             break;

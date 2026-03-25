@@ -35,8 +35,8 @@ Address source: `kNecDeviceAddress` in `prefferences.h`.
 
 Internal command enum (`commands.h`) is mapped to command bytes from `prefferences.h`:
 
-- `ON` -> `kNecCommandOn`
-- `OFF` -> `kNecCommandOff`
+- `ON` -> `kNecCommandToggle`
+- `OFF` -> `kNecCommandToggle`
 - `TEMP_UP` -> `kNecCommandTempUp`
 - `TEMP_DOWN` -> `kNecCommandTempDown`
 

@@ -8,7 +8,7 @@ class Heater {
 public:
     bool applyCommand(Command command);
     bool powerEnabled() const;
-
+    void setPowerEnabled(bool enabled);
 private:
     bool powerEnabled_ = false;
 };
@@ -22,8 +22,9 @@ public:
 class CommandStatusLed {
 public:
     void begin();
-    void showCommand(Command command);
+    void showCommand(Command command, bool isPowerEnabled);
 
 private:
     void setColor(bool redOn, bool greenOn, bool blueOn);
 };
+

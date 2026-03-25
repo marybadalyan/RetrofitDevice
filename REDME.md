@@ -96,8 +96,8 @@ constexpr uint8_t kIrPwmResolutionBits = 8U;
 
 // ── NEC protocol address + command bytes ──────
 constexpr uint16_t kNecDeviceAddress  = 0x00FF; // read from your heater remote
-constexpr uint8_t  kNecCommandOn      = 0x45;   // read from your heater remote
-constexpr uint8_t  kNecCommandOff     = 0x46;
+constexpr uint8_t  kNecCommandToggle      = 0x45;   // read from your heater remote
+constexpr uint8_t  kNecCommandToggle     = 0x46;
 constexpr uint8_t  kNecCommandTempUp  = 0x47;
 constexpr uint8_t  kNecCommandTempDown= 0x44;
 

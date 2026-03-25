@@ -187,8 +187,9 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
 
 Command HubClient::parseCommandString(const char* str) {
     if (!str) return Command::NONE;
-    if (strcmp(str, "on")        == 0) return Command::ON;
-    if (strcmp(str, "off")       == 0) return Command::OFF;
+    if (strcmp(str, "on_off")    == 0) return Command::ON_OFF;
+    if (strcmp(str, "on")        == 0) return Command::ON_OFF;  // backward compat
+    if (strcmp(str, "off")       == 0) return Command::ON_OFF;  // backward compat
     if (strcmp(str, "temp_up")   == 0) return Command::TEMP_UP;
     if (strcmp(str, "temp_down") == 0) return Command::TEMP_DOWN;
     return Command::NONE;

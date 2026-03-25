@@ -10,7 +10,7 @@ void HubMockScheduler::tick(uint32_t nowMs,
 
     if (!wallNow.valid || wallNow.dateKey == 0U) {
         if (!bootstrapPushed_ && nowMs > 3000) {
-            hubReceiver.pushMockCommand(Command::ON);
+            hubReceiver.pushMockCommand(Command::ON_OFF);
             bootstrapPushed_ = true;
         }
         return;

@@ -23,13 +23,10 @@ bool isAddressMatch(const Packet& packet) {
 }
 }  // namespace
 
-bool encodeCommand(Command command, uint8_t& outCommandByte) {
+bool encodeCommand(Command command, uint32_t& outCommandByte) {
     switch (command) {
-        case Command::ON:
-            outCommandByte = kNecCommandOn;
-            return true;
-        case Command::OFF:
-            outCommandByte = kNecCommandOff;
+        case Command::ON_OFF:
+            outCommandByte = kNecCommandToggle;
             return true;
         case Command::TEMP_UP:
             outCommandByte = kNecCommandTempUp;
@@ -43,12 +40,8 @@ bool encodeCommand(Command command, uint8_t& outCommandByte) {
 }
 
 bool decodeCommand(uint8_t commandByte, Command& outCommand) {
-    if (commandByte == kNecCommandOn) {
-        outCommand = Command::ON;
-        return true;
-    }
-    if (commandByte == kNecCommandOff) {
-        outCommand = Command::OFF;
+    if (commandByte == kNecCommandToggle) {
+        outCommand = Command::ON_OFF;
         return true;
     }
     if (commandByte == kNecCommandTempUp) {
@@ -85,9 +78,9 @@ bool parsePacket(const Packet& packet, Command& outCommand) {
     if (!isAddressMatch(packet)) {
         return false;
     }
-    if (packet.commandInverse != invertByte(packet.command)) {
-        return false;
-    }
+    // if (packet.commandInverse != invertByte(packet.command)) {
+    //     return false;
+    // }
 
     return decodeCommand(packet.command, outCommand);
 }
