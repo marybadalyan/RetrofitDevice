@@ -86,23 +86,16 @@ void HubClient::pollCommand(const WallClockSnapshot& wallNow) {
         Serial.println("[HUB] Connected to hub successfully!");
     }
 
-    Serial.printf("[HUB-POLL] Payload: %s\n", payload.c_str());
-
     char cmdStr[16] = {0};
     if (!extractJsonString(payload, "command", cmdStr, sizeof(cmdStr))) {
-        Serial.println("[HUB-POLL] Failed to extract command string");
         return;
     }
     if (cmdStr[0] == '\0' || strcmp(cmdStr, "null") == 0) {
-        Serial.println("[HUB-POLL] No pending command (null or empty)");
         return;
     }
 
-    Serial.printf("[HUB-POLL] Extracted command string: '%s'\n", cmdStr);
-
     const Command cmd = parseCommandString(cmdStr);
     if (cmd == Command::NONE) {
-        Serial.printf("[HUB-POLL] Unrecognised command: '%s'\n", cmdStr);
         diag::log(DiagLevel::WARN, "HUB", "command poll: unrecognised command");
         return;
     }
@@ -115,7 +108,6 @@ void HubClient::pollCommand(const WallClockSnapshot& wallNow) {
     if (!receiver_.push(cmd)) {
         diag::log(DiagLevel::WARN, "HUB", "command poll: queue full, dropped");
         logger_.log(wallNow, LogEventType::COMMAND_DROPPED, cmd, false);
-        Serial.println("[HUB-POLL] ✗ Queue full, command dropped!");
     }
 #else
     (void)wallNow;
