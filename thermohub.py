@@ -231,6 +231,7 @@ class TelemetryIn(BaseModel):
 
 class CommandIn(BaseModel):
     command: str   # 'on' | 'off' | 'temp_up' | 'temp_down'
+    ir_only: bool = False  # if True, don't update target temp
 
 class ScheduleEntry(BaseModel):
     day:     str
@@ -381,6 +382,7 @@ def post_telemetry(data: TelemetryIn, request: Request):
             """, (now, room_temp, target_temp,
                   int(data.power) if data.power is not None else None,
                   data.mode, data.pid_p, data.pid_i, data.pid_d, data.pid_steps, data.integral))
+            conn.commit()
 
     # Check schedule for current slot
     action = get_scheduled_action_now()
@@ -417,6 +419,7 @@ def post_telemetry(data: TelemetryIn, request: Request):
                     "INSERT INTO commands (ts, command, source) VALUES (?,?,?)",
                     (datetime.utcnow().isoformat(), action["command"], "schedule")
                 )
+                conn.commit()
             log.info("Schedule command queued: %s", action["command"])
 
     return response
@@ -436,6 +439,7 @@ def set_auto_control(body: AutoControlIn):
     with get_db() as conn:
         conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('auto_control', ?)",
                      (json.dumps(body.enabled),))
+        conn.commit()
     log.info("Auto control %s", "enabled" if body.enabled else "disabled")
     return {"status": "ok", "auto_control": body.enabled}
 
@@ -452,32 +456,36 @@ def post_command(body: CommandIn):
     if body.command == "off": device_state["power"] = False
 
     # Update target immediately so dashboard reflects change without waiting for ESP
-    if body.command == "temp_up":
-        current = device_state["target_temp"] or 21.0
-        device_state["target_temp"] = round(current + 0.5, 1)
-        last_manual_temp_ts = datetime.now().timestamp()
-        slot = get_scheduled_action_now()
-        now = datetime.now()
-        last_manual_slot_key = f"{now.strftime('%a')}_{slot['slot_time'] if slot else 'none'}"
-        log.info("Manual target → %.1f°C (slot key: %s)", device_state["target_temp"], last_manual_slot_key)
+    # (skip if ir_only flag is set — for IR commands that shouldn't change target)
+    if not body.ir_only:
+        if body.command == "temp_up":
+            current = device_state["target_temp"] or 21.0
+            device_state["target_temp"] = round(current + 0.5, 1)
+            last_manual_temp_ts = datetime.now().timestamp()
+            slot = get_scheduled_action_now()
+            now = datetime.now()
+            last_manual_slot_key = f"{now.strftime('%a')}_{slot['slot_time'] if slot else 'none'}"
+            log.info("Manual target → %.1f°C (slot key: %s)", device_state["target_temp"], last_manual_slot_key)
 
-    if body.command == "temp_down":
-        current = device_state["target_temp"] or 21.0
-        device_state["target_temp"] = round(current - 0.5, 1)
-        last_manual_temp_ts = datetime.now().timestamp()
-        slot = get_scheduled_action_now()
-        now = datetime.now()
-        last_manual_slot_key = f"{now.strftime('%a')}_{slot['slot_time'] if slot else 'none'}"
-        log.info("Manual target → %.1f°C (slot key: %s)", device_state["target_temp"], last_manual_slot_key)
+        if body.command == "temp_down":
+            current = device_state["target_temp"] or 21.0
+            device_state["target_temp"] = round(current - 0.5, 1)
+            last_manual_temp_ts = datetime.now().timestamp()
+            slot = get_scheduled_action_now()
+            now = datetime.now()
+            last_manual_slot_key = f"{now.strftime('%a')}_{slot['slot_time'] if slot else 'none'}"
+            log.info("Manual target → %.1f°C (slot key: %s)", device_state["target_temp"], last_manual_slot_key)
 
-    if body.command in ("temp_up", "temp_down"):
+    if body.command in ("temp_up", "temp_down") and not body.ir_only:
         with get_db() as conn:
             conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('target_temp', ?)",
                          (json.dumps(device_state["target_temp"]),))
+            conn.commit()
 
     with get_db() as conn:
         conn.execute("INSERT INTO commands (ts, command, source) VALUES (?,?,'dashboard')",
                      (datetime.utcnow().isoformat(), body.command))
+        conn.commit()
 
     log.info("Command queued: %s", body.command)
     return {"status": "queued", "command": body.command}
@@ -499,6 +507,7 @@ def get_pending_command():
         if not row:
             return {"command": None}
         conn.execute("UPDATE commands SET source='sent' WHERE id=?", (row["id"],))
+        conn.commit()
         return {"command": row["command"]}
 
 # ── History ───────────────────────────────────────────────────
@@ -549,6 +558,7 @@ def save_schedule(body: ScheduleIn):
             "INSERT INTO schedule (day, time, type, temp, command) VALUES (?,?,?,?,?)",
             [(e.day, e.time, e.type, e.temp, e.command) for e in body.schedule]
         )
+        conn.commit()
     log.info("Schedule saved: %d entries", len(body.schedule))
     return {"status": "saved", "entries": len(body.schedule)}
 
@@ -623,6 +633,7 @@ def save_config(body: ConfigIn):
     with get_db() as conn:
         conn.executemany("INSERT OR REPLACE INTO config (key, value) VALUES (?,?)",
                          [(k, json.dumps(v)) for k, v in data.items()])
+        conn.commit()
     log.info("Config updated: %s", list(data.keys()))
     return {"status": "saved", "keys": list(data.keys())}
 
