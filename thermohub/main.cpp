@@ -27,6 +27,7 @@
 
 #ifdef REAL_IR_TX
 #include "IRSender.h"
+#include "IRLearner.h"
 #endif
 
 #ifdef REAL_OLED
@@ -132,7 +133,15 @@ namespace {
 #endif
 
 #ifdef REAL_IR_TX
-    IRSender gIrSend;
+    IRSender  gIrSend;
+    IRLearner gIrLearner;
+
+    // ── Learn state machine ──────────────────────────────────
+    enum class LearnState { IDLE, LISTENING, DONE_OK, DONE_FAIL };
+    LearnState gLearnState    = LearnState::IDLE;
+    Command    gLearnTarget   = Command::NONE;
+    uint32_t   gLearnStartMs  = 0;
+    constexpr uint32_t kLearnTimeoutMs = 10000;
 #endif
 
 #ifdef REAL_OLED
@@ -313,8 +322,15 @@ void setup() {
 #endif
 
 #ifdef REAL_IR_TX
+    gIrLearner.begin();
+    gIrSend.setLearner(&gIrLearner);  // must be before begin() — begin() calls learner_->beginSend()
     gIrSend.begin();
     Serial.printf("[IR] Transmitter ready on GPIO %d\n", kIrTxPin);
+    Serial.printf("[IR] Learner ready (rx GPIO %d). Learned codes: ON=%s UP=%s DN=%s\n",
+                  kIrRxPin,
+                  gIrLearner.hasLearned(Command::ON_OFF)    ? "yes" : "no",
+                  gIrLearner.hasLearned(Command::TEMP_UP)   ? "yes" : "no",
+                  gIrLearner.hasLearned(Command::TEMP_DOWN) ? "yes" : "no");
 #endif
 
 #ifdef REAL_OLED
@@ -334,11 +350,50 @@ void setup() {
 #endif
 }
 
+// ── LEARN RESULT POST ─────────────────────────────────────────
+#ifdef REAL_IR_TX
+static void postLearnResult(Command cmd, bool success) {
+    HTTPClient http;
+    char url[128];
+    snprintf(url, sizeof(url), "http://%s:%d/api/learn/result", kHubHost, kHubPort);
+    if (!http.begin(url)) return;
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("X-Device-ID", DEVICE_ID);
+    http.addHeader("Authorization", DEVICE_PASS);
+    const char* cmdStr = "on_off";
+    if (cmd == Command::TEMP_UP)   cmdStr = "temp_up";
+    if (cmd == Command::TEMP_DOWN) cmdStr = "temp_down";
+    char body[64];
+    snprintf(body, sizeof(body), "{\"cmd\":\"%s\",\"status\":\"%s\"}",
+             cmdStr, success ? "ok" : "fail");
+    http.POST(body);
+    http.end();
+}
+#endif
+
 // ── LOOP ─────────────────────────────────────────────────────
 void loop() {
     const uint32_t nowMs = millis();
     const uint32_t nowUs = micros();
     static uint32_t lastTelemetryMs = 0;
+
+    // ── 0. IR learn state machine ────────────────────────────
+#ifdef REAL_IR_TX
+    if (gLearnState == LearnState::LISTENING) {
+        const LearnPollResult lpr = gIrLearner.poll(gLearnTarget);
+        if (lpr == LearnPollResult::OK) {
+            gLearnState = LearnState::DONE_OK;
+            gIrLearner.stopListen();
+            Serial.printf("[LEARN] Success for %s\n", commandToString(gLearnTarget));
+            postLearnResult(gLearnTarget, true);
+        } else if (nowMs - gLearnStartMs >= kLearnTimeoutMs) {
+            gLearnState = LearnState::DONE_FAIL;
+            gIrLearner.stopListen();
+            Serial.printf("[LEARN] Timeout for %s\n", commandToString(gLearnTarget));
+            postLearnResult(gLearnTarget, false);
+        }
+    }
+#endif
 
     // ── 1. Read room temperature ──────────────────────────────
 #ifndef REAL_TEMP_SENSOR
@@ -526,6 +581,32 @@ void loop() {
                 Serial.printf("[CMD] Manual TEMP_DOWN — IR sent directly, target=%.1f\n", gTargetTempC);
                 gHubClient.forceTelemetry();
             }
+            break;
+
+        case Command::LEARN_ON_OFF:
+        case Command::LEARN_TEMP_UP:
+        case Command::LEARN_TEMP_DOWN:
+#ifdef REAL_IR_TX
+            if (gLearnState == LearnState::LISTENING) {
+                // Already learning — cancel and restart for new target
+                gIrLearner.stopListen();
+            }
+            if (cmd == Command::LEARN_ON_OFF)    gLearnTarget = Command::ON_OFF;
+            else if (cmd == Command::LEARN_TEMP_UP)  gLearnTarget = Command::TEMP_UP;
+            else                                      gLearnTarget = Command::TEMP_DOWN;
+            gLearnState   = LearnState::LISTENING;
+            gLearnStartMs = nowMs;
+            gIrLearner.beginListen();
+            Serial.printf("[LEARN] Started listening for %s (10s timeout)\n",
+                          commandToString(gLearnTarget));
+#endif
+            break;
+
+        case Command::LEARN_CLEAR_ALL:
+#ifdef REAL_IR_TX
+            gIrLearner.clearAll();
+            Serial.println("[LEARN] All codes cleared.");
+#endif
             break;
 
         default:

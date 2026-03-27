@@ -284,6 +284,16 @@
     }
   }
 
+  /* LEARN BADGES */
+  .learn-badge{font-size:0.68rem;letter-spacing:1.5px;text-transform:uppercase;
+               padding:3px 10px;border-radius:20px;display:inline-block;min-height:22px;}
+  .learn-badge.learned{background:rgba(74,140,92,.1);color:var(--green);
+                        border:1px solid rgba(74,140,92,.3);}
+  .learn-badge.not-learned{background:var(--surface);color:var(--muted);
+                             border:1px solid var(--border);}
+  .learn-badge.listening{background:rgba(192,108,132,.1);color:var(--accent);
+                          border:1px solid rgba(192,108,132,.3);animation:pdot 1s infinite;}
+
   /* TOGGLE SWITCH */
   .toggle-switch{position:relative;width:56px;height:32px;background:var(--surface);border:1px solid var(--border);border-radius:16px;transition:all .3s;cursor:pointer;}
   @media(max-width:600px){.toggle-switch{width:60px;height:36px;}}
@@ -305,7 +315,7 @@
   <button class="tab active" onclick="showPage('control',this)">Control</button>
   <button class="tab" onclick="showPage('schedule',this)">Schedule</button>
   <button class="tab" onclick="showPage('history',this)">History</button>
-
+  <button class="tab" onclick="showPage('learn',this)">Learn Remote</button>
 </nav>
 
 <!-- CONTROL -->
@@ -321,14 +331,14 @@
         <div class="power-lbl" id="powerLbl">OFF</div>
       </div>
       <div class="hero-step-btns" style="display:contents;">
-        <button onclick="stepTarget(-0.5)"
+        <button onclick="sendIRCommand('temp_down')"
           style="order:1;width:56px;height:56px;border-radius:50%;border:none;background:var(--surface);
                  font-size:1.8rem;cursor:pointer;color:var(--text);transition:background .15s;"
           onmouseover="this.style.background='var(--accent)';this.style.color='#fff'"
           onmouseout="this.style.background='var(--surface)';this.style.color='var(--text)'"
           ontouchstart="this.style.background='var(--accent)';this.style.color='#fff'"
           ontouchend="this.style.background='var(--surface)';this.style.color='var(--text)'">−</button>
-        <button onclick="stepTarget(+0.5)"
+        <button onclick="sendIRCommand('temp_up')"
           style="order:3;width:56px;height:56px;border-radius:50%;border:none;background:var(--surface);
                  font-size:1.8rem;cursor:pointer;color:var(--text);transition:background .15s;"
           onmouseover="this.style.background='var(--accent)';this.style.color='#fff'"
@@ -491,6 +501,68 @@
   </div>
 </div>
 
+<!-- LEARN REMOTE -->
+<div class="page" id="page-learn">
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-label">How it works</div>
+    <p style="font-size:0.78rem;color:var(--muted);line-height:1.8;margin:0;">
+      Click a <strong style="color:var(--text)">Learn</strong> button, then point your heater's original remote at the
+      IR receiver on the device and press the corresponding button within <strong style="color:var(--text)">10 seconds</strong>.
+      The code is stored permanently — it survives reboots and works for any brand or protocol.
+      If a code is already learned it will be replaced. The fallback (built-in NEC) is used when no code is stored.
+    </p>
+  </div>
+
+  <!-- Status banner -->
+  <div id="learnBanner" style="display:none;padding:14px 20px;border-radius:12px;margin-bottom:16px;
+       font-size:0.8rem;font-weight:500;letter-spacing:0.5px;transition:all .3s;"></div>
+
+  <div class="g3" style="margin-bottom:16px;">
+
+    <!-- ON / OFF -->
+    <div class="card" style="text-align:center;">
+      <div class="card-label">Power toggle</div>
+      <div style="font-size:2.2rem;margin:10px 0;">⏻</div>
+      <div id="learnBadge_on_off" class="learn-badge" style="margin-bottom:12px;"></div>
+      <button class="btn btn-p" style="width:100%;" onclick="startLearn('learn_on_off','on_off','Power toggle')">
+        Learn ON/OFF
+      </button>
+    </div>
+
+    <!-- TEMP+ -->
+    <div class="card" style="text-align:center;">
+      <div class="card-label">Temperature up</div>
+      <div style="font-size:2.2rem;margin:10px 0;">+</div>
+      <div id="learnBadge_temp_up" class="learn-badge" style="margin-bottom:12px;"></div>
+      <button class="btn btn-p" style="width:100%;" onclick="startLearn('learn_temp_up','temp_up','Temp +')">
+        Learn TEMP +
+      </button>
+    </div>
+
+    <!-- TEMP- -->
+    <div class="card" style="text-align:center;">
+      <div class="card-label">Temperature down</div>
+      <div style="font-size:2.2rem;margin:10px 0;">−</div>
+      <div id="learnBadge_temp_down" class="learn-badge" style="margin-bottom:12px;"></div>
+      <button class="btn btn-p" style="width:100%;" onclick="startLearn('learn_temp_down','temp_down','Temp −')">
+        Learn TEMP −
+      </button>
+    </div>
+
+  </div>
+
+  <div class="card">
+    <div class="card-label">Danger zone</div>
+    <p style="font-size:0.75rem;color:var(--muted);line-height:1.7;margin-bottom:14px;">
+      Wipes all three learned codes from device memory. The device will fall back to the built-in NEC codes.
+    </p>
+    <button class="btn btn-s" onclick="clearLearnedCodes()"
+            style="border-color:#fca5a5;color:#dc2626;">
+      Clear all learned codes
+    </button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -592,6 +664,16 @@ async function stepTarget(delta){
     } else {
         targetTemp = prev;
         document.getElementById('targetDisp2').textContent = targetTemp.toFixed(1);
+        toast('Hub offline');
+    }
+}
+
+// ── Send IR command only (without changing target) ──
+async function sendIRCommand(cmd){
+    const r = await api('/api/command','POST',{command: cmd, ir_only: true});
+    if(r){
+        toast(cmd === 'temp_up' ? 'IR: Temp ▲' : 'IR: Temp ▼');
+    } else {
         toast('Hub offline');
     }
 }
@@ -799,7 +881,103 @@ initLiveChart();
 loadSched();
 loadMode();
 poll();
-setInterval(poll, 2000);  
+setInterval(poll, 2000);
+
+// ── IR Learn ──────────────────────────────────────────────────
+let learnPolling = null;
+let learningCmd  = null;   // the short key, e.g. "on_off"
+
+function setBadge(key, state) {
+  const el = document.getElementById('learnBadge_' + key);
+  if (!el) return;
+  el.className = 'learn-badge ' + state;
+  if (state === 'learned')    el.textContent = '✓ learned';
+  else if (state === 'listening') el.textContent = '● listening…';
+  else                        el.textContent = 'not set';
+}
+
+function setLearnBanner(msg, color) {
+  const b = document.getElementById('learnBanner');
+  if (!msg) { b.style.display = 'none'; return; }
+  b.style.display = 'block';
+  b.style.background = color === 'green'
+    ? 'rgba(74,140,92,.1)' : color === 'red'
+    ? 'rgba(220,38,38,.08)' : 'rgba(192,108,132,.1)';
+  b.style.color = color === 'green' ? 'var(--green)'
+    : color === 'red' ? '#dc2626' : 'var(--accent)';
+  b.style.border = '1px solid ' + (color === 'green'
+    ? 'rgba(74,140,92,.3)' : color === 'red'
+    ? 'rgba(220,38,38,.2)' : 'rgba(192,108,132,.3)');
+  b.textContent = msg;
+}
+
+async function startLearn(command, key, label) {
+  if (learnPolling) clearInterval(learnPolling);
+  learningCmd = key;
+  setBadge(key, 'listening');
+  setLearnBanner(`Listening for "${label}" — press the button on your remote now…`, 'accent');
+
+  await fetch(HUB + '/api/command', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({command})
+  });
+
+  learnPolling = setInterval(async () => {
+    try {
+      const r = await fetch(HUB + '/api/learn/status');
+      const d = await r.json();
+      if (d.cmd !== key) return;   // status is for a different command
+      if (d.status === 'ok') {
+        clearInterval(learnPolling); learnPolling = null;
+        setBadge(key, 'learned');
+        setLearnBanner(`"${label}" learned successfully!`, 'green');
+      } else if (d.status === 'fail') {
+        clearInterval(learnPolling); learnPolling = null;
+        setBadge(key, 'not-learned');
+        setLearnBanner(`No signal received for "${label}" — try again.`, 'red');
+      }
+    } catch(e) { /* ignore transient errors */ }
+  }, 1000);
+
+  // Auto-stop polling after 12 s even if no result arrives
+  setTimeout(() => {
+    if (!learnPolling) return;
+    clearInterval(learnPolling); learnPolling = null;
+    if (document.getElementById('learnBadge_' + key).classList.contains('listening')) {
+      setBadge(key, 'not-learned');
+      setLearnBanner('Timed out — no result received from device.', 'red');
+    }
+  }, 12000);
+}
+
+async function clearLearnedCodes() {
+  if (!confirm('Clear all learned IR codes? The device will fall back to built-in NEC codes.')) return;
+  await fetch(HUB + '/api/command', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({command: 'learn_clear'})
+  });
+  ['on_off','temp_up','temp_down'].forEach(k => setBadge(k, 'not-learned'));
+  setLearnBanner('All learned codes cleared.', 'accent');
+}
+
+// On load: fetch current learn status to populate badges
+(async () => {
+  try {
+    const r = await fetch(HUB + '/api/learn/status');
+    const d = await r.json();
+    // We can't know which individual codes are stored from the status alone —
+    // that lives in the device NVS. Show "learned" only for the last OK result.
+    if (d.status === 'ok' && d.cmd) setBadge(d.cmd, 'learned');
+    ['on_off','temp_up','temp_down'].forEach(k => {
+      const el = document.getElementById('learnBadge_' + k);
+      if (el && !el.textContent) setBadge(k, 'not-learned');
+    });
+  } catch(e) {
+    ['on_off','temp_up','temp_down'].forEach(k => setBadge(k, 'not-learned'));
+  }
+})();
 </script>
 </body>
 </html>

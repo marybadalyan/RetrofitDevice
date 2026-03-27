@@ -38,7 +38,7 @@ constexpr float kDefaultTargetTemperatureC = 21.0F;
 constexpr const char* kHubHost = "192.168.0.14";
 constexpr int         kHubPort = 5000;
 
-constexpr uint32_t kHubCommandPollIntervalMs = 2000U;   
+constexpr uint32_t kHubCommandPollIntervalMs = 1000U;   
 constexpr uint32_t kHubTelemetryIntervalMs   = 5000U;  
 constexpr int      kHubHttpTimeoutMs         = 3000;
 
