@@ -239,10 +239,10 @@ const char* portalCSS = R"(
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&display=swap');
   body{background:#f5f0eb;color:#2a1f14;font-family:'DM Mono',monospace;}
   h1{font-family:'DM Serif Display',serif;font-size:1.5rem;margin-bottom:4px;}
-  h1 span{color:#c45c1a;font-style:italic;}
+  h1 span{color:#c06c84;font-style:italic;}
   input{background:#faf7f4;border:1px solid #e8e0d6;border-radius:9px;padding:9px 13px;font-family:'DM Mono',monospace;font-size:0.8rem;color:#2a1f14;width:100%;}
-  input:focus{border-color:#c45c1a;outline:none;}
-  button{background:#c45c1a;border:none;border-radius:10px;color:#fff;font-family:'DM Mono',monospace;letter-spacing:1.5px;text-transform:uppercase;padding:11px;width:100%;cursor:pointer;}
+  input:focus{border-color:#c06c84;outline:none;}
+  button{background:#c06c84;border:none;border-radius:10px;color:#fff;font-family:'DM Mono',monospace;letter-spacing:1.5px;text-transform:uppercase;padding:11px;width:100%;cursor:pointer;}
 </style>
 )";
 

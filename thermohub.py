@@ -72,7 +72,7 @@ ENTRY_PAGE = """<!DOCTYPE html>
   <style>
     *{{box-sizing:border-box;margin:0;padding:0}}
     :root{{--bg:#f5f0eb;--surface:#faf7f4;--card:#fff;--border:#e8e0d6;
-          --text:#2a1f14;--muted:#9c8b7a;--accent:#c45c1a;
+          --text:#2a1f14;--muted:#9c8b7a;--accent:#c06c84;
           --serif:'DM Serif Display',serif;--mono:'DM Mono',monospace}}
     body{{background:var(--bg);color:var(--text);font-family:var(--mono);
          min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}}
@@ -93,7 +93,7 @@ ENTRY_PAGE = """<!DOCTYPE html>
             padding:14px;font-family:var(--mono);font-size:12px;letter-spacing:1.5px;
             text-transform:uppercase;cursor:pointer;transition:opacity .2s}}
     button:hover{{opacity:.85}}
-    .err{{background:rgba(196,92,26,.08);border:1px solid rgba(196,92,26,.25);
+    .err{{background:rgba(192,108,132,.08);border:1px solid rgba(192,108,132,.25);
           color:var(--accent);border-radius:10px;padding:12px 16px;
           font-size:12px;margin-bottom:16px}}
   </style>
@@ -128,7 +128,7 @@ LOGIN_PAGE = """<!DOCTYPE html>
   <style>
     *{{box-sizing:border-box;margin:0;padding:0}}
     :root{{--bg:#f5f0eb;--surface:#faf7f4;--card:#fff;--border:#e8e0d6;
-          --text:#2a1f14;--muted:#9c8b7a;--accent:#c45c1a;
+          --text:#2a1f14;--muted:#9c8b7a;--accent:#c06c84;
           --serif:'DM Serif Display',serif;--mono:'DM Mono',monospace}}
     body{{background:var(--bg);color:var(--text);font-family:var(--mono);
          min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}}
@@ -148,7 +148,7 @@ LOGIN_PAGE = """<!DOCTYPE html>
             padding:14px;font-family:var(--mono);font-size:12px;letter-spacing:1.5px;
             text-transform:uppercase;cursor:pointer;transition:opacity .2s}}
     button:hover{{opacity:.85}}
-    .err{{background:rgba(196,92,26,.08);border:1px solid rgba(196,92,26,.25);
+    .err{{background:rgba(192,108,132,.08);border:1px solid rgba(192,108,132,.25);
           color:var(--accent);border-radius:10px;padding:12px 16px;
           font-size:12px;margin-bottom:16px}}
   </style>

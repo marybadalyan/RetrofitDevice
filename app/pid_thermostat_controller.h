@@ -18,7 +18,7 @@ class PidThermostatController {
 public:
     struct Config {
         // Control loop period in milliseconds.
-        uint32_t controlIntervalMs = 10000U;
+        uint32_t controlIntervalMs = 10000U; // in reallaty this should be at least 20min
         // Anti-windup clamp for integral accumulator.
         float integralLimit = 50.0F;
         // Skip IR command when close enough to target.

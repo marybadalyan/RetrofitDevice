@@ -101,7 +101,7 @@ TxFailureCode IRSender::sendFrame(Command command) {
     sendByte(packet.commandInverse);
 
     mark(560);
-    space(560);
+    space(40000);  // NEC inter-frame gap (~40ms minimum)
     return TxFailureCode::NONE;
 }
 

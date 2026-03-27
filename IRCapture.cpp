@@ -18,7 +18,8 @@ void loop() {
 
             uint16_t cmd = IrReceiver.decodedIRData.command;
 
-            Serial.println(cmd, "0x",HEX);
+            Serial.print("0x");
+            Serial.println(cmd, HEX);
         }
         IrReceiver.resume();
     }
