@@ -629,25 +629,15 @@ def get_pending_command():
 @app.get("/api/learn/status")
 def get_learn_status(ack: bool = False):
     global learn_state
-
-    # Auto-timeout: ESP32 times out after 5s — if hub is still "listening"
-    # after 8s, the device result POST likely failed.  Mark as fail so the
-    # dashboard doesn't hang forever.
-    if learn_state["status"] == "listening" and learn_state["ts"]:
-        elapsed = time.time() - learn_state["ts"]
-        if elapsed > 8:
-            learn_state["status"] = "fail"
-            log.info("Learn auto-timed-out (%.1fs elapsed, no result from device)", elapsed)
-
     current = learn_state.copy()
-
-    # Only reset to idle if the dashboard sends an 'ack' (acknowledgment)
+    
+    # Only reset to idle if the dashboard sends an 'ack'
     if ack and learn_state["status"] in ["ok", "fail"]:
         learn_state["status"] = "idle"
-        log.info("Learn state cleared by dashboard ack")
-
+        learn_state["cmd"] = None
+        log.info("Learn state cleared by dashboard ACK")
+        
     return current
-
 # ── IR Learn: POST result (ESP32 reports back) ────────────────
 class LearnResultIn(BaseModel):
     cmd:     str   # "on_off" | "temp_up" | "temp_down" | "learn_custom"

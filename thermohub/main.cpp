@@ -412,6 +412,19 @@ void loop() {
     const uint32_t nowUs = micros();
     static uint32_t lastTelemetryMs = 0;
 
+    // ── 1. Connectivity + time ───────────────────────────────
+    gHubConnectivity.tick(nowMs, gHubReceiver, gWallClock);
+    const WallClockSnapshot wallNow = gWallClock.now(nowMs, nowUs);
+
+    // ── 2. Read room temperature ──────────────────────────────
+#ifndef REAL_TEMP_SENSOR
+    MockRoom::heaterOn = gHeaterPowered;
+    MockRoom::update(nowMs);
+    const float roomTempC = MockRoom::roomTempC;
+#else
+    const float roomTempC = gTempSensor.readTemperatureC();
+#endif
+
     // ── 0. IR learn state machine ────────────────────────────
     // LISTENING: pure IR polling — no WiFi calls at all (WiFi.status()
     // at tight-loop speed corrupts the WiFi driver after a few seconds).
@@ -434,32 +447,25 @@ void loop() {
     // Runs on the NEXT iteration after LISTENING exits.
     // delay(500) lets the WiFi driver fully recover after seconds of
     // zero WiFi calls in the tight IR polling loop.
-    if (gLearnState == LearnState::DONE_OK || gLearnState == LearnState::DONE_FAIL) {
-        Serial.println("[LEARN] Posting result to hub…");
-        delay(500);
-        const bool ok = (gLearnState == LearnState::DONE_OK);
-        if (postLearnResult(gLearnTarget, ok)) {
-            gLearnState = LearnState::IDLE;
-        } else {
-            // postLearnResult already retried 5 times internally.
-            // Give up — hub auto-timeout will mark it as failed.
-            Serial.println("[LEARN] Giving up on POST — hub will auto-timeout");
-            gLearnState = LearnState::IDLE;
-        }
+   if (gLearnState == LearnState::DONE_OK || gLearnState == LearnState::DONE_FAIL) {
+    Serial.println("[LEARN] Posting result to hub…");
+    
+    // Give the WiFi radio more time to "wake up" after the tight loop
+    delay(500); 
+    
+    const bool ok = (gLearnState == LearnState::DONE_OK);
+    
+    // We MUST successfully POST the custom IR data, or the button will be empty (0,0,0)
+    if (postLearnResult(gLearnTarget, ok)) {
+        gLearnState = LearnState::IDLE;
+        // Force a sync so the Hub knows the 'learn_custom' command is finished
+        gHubClient.tick(millis(), wallNow, true);  
+    } else {
+        // If it fails after retries, we stay in DONE state to try again next loop
+        // OR we timeout. For now, let's reset to avoid an infinite loop.
+        gLearnState = LearnState::IDLE;
     }
-#endif
-
-    // ── 1. Connectivity + time ───────────────────────────────
-    gHubConnectivity.tick(nowMs, gHubReceiver, gWallClock);
-    const WallClockSnapshot wallNow = gWallClock.now(nowMs, nowUs);
-
-    // ── 2. Read room temperature ──────────────────────────────
-#ifndef REAL_TEMP_SENSOR
-    MockRoom::heaterOn = gHeaterPowered;
-    MockRoom::update(nowMs);
-    const float roomTempC = MockRoom::roomTempC;
-#else
-    const float roomTempC = gTempSensor.readTemperatureC();
+}
 #endif
 
     // ── 3. Apply mode change from hub ─────────────────────────

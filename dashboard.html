@@ -1022,6 +1022,7 @@ async function startLearn(command, key, label) {
       // Primary check: status/cmd fields match our learn operation
       if (d.cmd === key && d.status === 'ok') {
         clearInterval(learnPolling); learnPolling = null;
+        await fetch(HUB + '/api/learn/status?ack=true');
         setBadge(key, 'learned');
         setLearnBanner(`"${label}" learned!`, 'green');
         fetch(HUB + '/api/learn/status?ack=true');
@@ -1232,13 +1233,18 @@ async function learnCustomButton(buttonId) {
       const d = await r.json();
       if (d.cmd !== 'learn_custom') return;
       if (d.status === 'ok') {
-        clearInterval(learnPolling);
-        learnPolling = null;
-        learningCustomButtonId = null;
-        setLearnBanner(`Button "${btn.name}" learned!`, 'green');
-        fetch(HUB + '/api/learn/status?ack=true');
-        setTimeout(loadCustomButtons, 500);
-      } else if (d.status === 'fail') {
+  clearInterval(learnPolling);
+  learnPolling = null;
+  learningCustomButtonId = null;
+
+  // 1. ADD THIS: Explicitly acknowledge success to the Hub
+  await fetch(HUB + '/api/learn/status?ack=true'); 
+
+  setLearnBanner(`Button "${btn.name}" learned!`, 'green');
+  
+  // 2. Refresh the buttons so the "Send" button becomes active immediately
+  setTimeout(loadCustomButtons, 100); 
+}else if (d.status === 'fail') {
         clearInterval(learnPolling);
         learnPolling = null;
         learningCustomButtonId = null;
