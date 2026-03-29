@@ -515,9 +515,9 @@
     <div class="card-label">How it works</div>
     <p style="font-size:0.78rem;color:var(--muted);line-height:1.8;margin:0;">
       Click a <strong style="color:var(--text)">Learn</strong> button, then point your heater's original remote at the
-      IR receiver on the device and press the corresponding button within <strong style="color:var(--text)">10 seconds</strong>.
+      IR receiver on the device and press the corresponding button within <strong style="color:var(--text)">5 seconds</strong>.
       The code is stored permanently — it survives reboots and works for any brand or protocol.
-      If a code is already learned it will be replaced. The fallback (built-in NEC) is used when no code is stored.
+      If a code is already learned it will be replaced. If no code is stored, the button will have no effect until learned.
     </p>
   </div>
 
@@ -999,7 +999,14 @@ async function startLearn(command, key, label) {
   if (learnPolling) clearInterval(learnPolling);
   learningCmd = key;
   setBadge(key, 'listening');
-  setLearnBanner(`Listening for "${label}" — press the button on your remote now…`, 'accent');
+  setLearnBanner(`Press "${label}" on your remote within 5 seconds — then wait for confirmation.`, 'accent');
+
+  // Snapshot whether this key was already learned (for fallback detection)
+  let wasLearned = false;
+  try {
+    const pre = await (await fetch(HUB + '/api/learn/status?ack=true')).json();
+    wasLearned = !!(pre.learned && pre.learned[key]);
+  } catch(e) {}
 
   await fetch(HUB + '/api/command', {
     method: 'POST',
@@ -1011,28 +1018,45 @@ async function startLearn(command, key, label) {
     try {
       const r = await fetch(HUB + '/api/learn/status');
       const d = await r.json();
-      if (d.cmd !== key) return;   // status is for a different command
-      if (d.status === 'ok') {
+
+      // Primary check: status/cmd fields match our learn operation
+      if (d.cmd === key && d.status === 'ok') {
         clearInterval(learnPolling); learnPolling = null;
         setBadge(key, 'learned');
-        setLearnBanner(`"${label}" learned successfully!`, 'green');
-      } else if (d.status === 'fail') {
+        setLearnBanner(`"${label}" learned!`, 'green');
+        fetch(HUB + '/api/learn/status?ack=true');
+        return;
+      }
+      if (d.cmd === key && d.status === 'fail') {
         clearInterval(learnPolling); learnPolling = null;
         setBadge(key, 'not-learned');
         setLearnBanner(`No signal received for "${label}" — try again.`, 'red');
+        fetch(HUB + '/api/learn/status?ack=true');
+        return;
+      }
+
+      // Fallback: the persistent learned dict changed from false→true.
+      // Catches cases where status/cmd were overwritten by a subsequent
+      // learn operation before we could poll the "ok".
+      if (!wasLearned && d.learned && d.learned[key]) {
+        clearInterval(learnPolling); learnPolling = null;
+        setBadge(key, 'learned');
+        setLearnBanner(`"${label}" learned!`, 'green');
+        return;
       }
     } catch(e) { /* ignore transient errors */ }
-  }, 500);
+  }, 200);
 
-  // Auto-stop polling after 15 s even if no result arrives
+  // Auto-stop polling after 16s (ESP32 timeout=10s + hub auto-timeout=12s + margin)
   setTimeout(() => {
     if (!learnPolling) return;
     clearInterval(learnPolling); learnPolling = null;
     if (document.getElementById('learnBadge_' + key).classList.contains('listening')) {
       setBadge(key, 'not-learned');
       setLearnBanner('Timed out — no result received from device.', 'red');
+      fetch(HUB + '/api/learn/status?ack=true');
     }
-  }, 15000);
+  }, 10000);
 }
 
 function clearLearnedCodes() {
@@ -1191,7 +1215,10 @@ async function learnCustomButton(buttonId) {
   learningCustomButtonId = buttonId;
   const btn = customButtons.find(b => b.id === buttonId);
   renderCustomButtons();
-  setLearnBanner(`Point your remote and press the button for "${btn.name}"…`, 'accent');
+  setLearnBanner(`Press the button for "${btn.name}" on your remote — wait for confirmation…`, 'accent');
+
+  // Clear any stale state first
+  await fetch(HUB + '/api/learn/status?ack=true');
 
   // Tell hub we're learning this custom button (it queues the device command too)
   try {
@@ -1209,7 +1236,7 @@ async function learnCustomButton(buttonId) {
         learnPolling = null;
         learningCustomButtonId = null;
         setLearnBanner(`Button "${btn.name}" learned!`, 'green');
-        // Reload to get updated button state
+        fetch(HUB + '/api/learn/status?ack=true');
         setTimeout(loadCustomButtons, 500);
       } else if (d.status === 'fail') {
         clearInterval(learnPolling);
@@ -1217,9 +1244,10 @@ async function learnCustomButton(buttonId) {
         learningCustomButtonId = null;
         renderCustomButtons();
         setLearnBanner('Learn failed — try again', 'red');
+        fetch(HUB + '/api/learn/status?ack=true');
       }
     } catch(e) {}
-  }, 500);
+  }, 200);
 
   setTimeout(() => {
     if (learnPolling) {
@@ -1228,8 +1256,9 @@ async function learnCustomButton(buttonId) {
       learningCustomButtonId = null;
       renderCustomButtons();
       setLearnBanner('Learn timeout', 'red');
+      fetch(HUB + '/api/learn/status?ack=true');
     }
-  }, 15000);
+  }, 10000);
 }
 
 async function sendCustomButton(buttonId) {

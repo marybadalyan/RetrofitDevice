@@ -141,7 +141,7 @@ namespace {
     LearnState gLearnState    = LearnState::IDLE;
     Command    gLearnTarget   = Command::NONE;
     uint32_t   gLearnStartMs  = 0;
-    constexpr uint32_t kLearnTimeoutMs = 10000;
+    constexpr uint32_t kLearnTimeoutMs = 5000;
 #endif
 
 #ifdef REAL_OLED
@@ -352,22 +352,13 @@ void setup() {
 
 // ── LEARN RESULT POST ─────────────────────────────────────────
 #ifdef REAL_IR_TX
-static void postLearnResult(Command cmd, bool success) {
-    HTTPClient http;
-    char url[128];
-    snprintf(url, sizeof(url), "http://%s:%d/api/learn/result", kHubHost, kHubPort);
-    if (!http.begin(url)) return;
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("X-Device-ID", DEVICE_ID);
-    http.addHeader("Authorization", DEVICE_PASS);
+static bool postLearnResult(Command cmd, bool success) {
     const char* cmdStr = "on_off";
     if (cmd == Command::TEMP_UP)       cmdStr = "temp_up";
     if (cmd == Command::TEMP_DOWN)     cmdStr = "temp_down";
     if (cmd == Command::LEARN_CUSTOM)  cmdStr = "learn_custom";
 
     char body[256];
-
-    // For custom buttons, include the captured IR code so the hub can store it
     if (cmd == Command::LEARN_CUSTOM && success) {
         LearnedCode code;
         if (gIrLearner.getLastCaptured(code)) {
@@ -383,23 +374,35 @@ static void postLearnResult(Command cmd, bool success) {
                  cmdStr, success ? "ok" : "fail");
     }
 
-    // Try up to 5 times — a single transient failure leaves the dashboard
-    // stuck on "listening" because the hub never receives the result.
+    char url[128];
+    snprintf(url, sizeof(url), "http://%s:%d/api/learn/result", kHubHost, kHubPort);
+
+    // Retry up to 5 times — WiFi stack needs time to recover after the
+    // tight IR polling loop where zero WiFi calls were made.
     for (int attempt = 0; attempt < 5; ++attempt) {
-        const int code = http.POST(body);
-        if (code == 200) {
-            Serial.printf("[LEARN] Result posted OK: %s\n", cmdStr);
-            break;
+        if (attempt > 0) delay(500);
+
+        WiFiClient wifiClient;
+        HTTPClient http;
+        if (!http.begin(wifiClient, url)) {
+            Serial.printf("[LEARN] http.begin() failed (attempt %d/5)\n", attempt + 1);
+            continue;
         }
-        Serial.printf("[LEARN] Result POST failed (HTTP %d), retry %d/5\n", code, attempt + 1);
-        http.end();
-        delay(500);
-        if (!http.begin(url)) break;
         http.addHeader("Content-Type", "application/json");
         http.addHeader("X-Device-ID", DEVICE_ID);
         http.addHeader("Authorization", DEVICE_PASS);
+        http.setTimeout(2000);
+
+        const int code = http.POST(body);
+        http.end();
+        if (code == 200) {
+            Serial.printf("[LEARN] Reported %s=%s to hub\n", cmdStr, success ? "ok" : "fail");
+            return true;
+        }
+        Serial.printf("[LEARN] POST failed HTTP %d (attempt %d/5)\n", code, attempt + 1);
     }
-    http.end();
+    Serial.println("[LEARN] All POST attempts failed");
+    return false;
 }
 #endif
 
@@ -410,11 +413,8 @@ void loop() {
     static uint32_t lastTelemetryMs = 0;
 
     // ── 0. IR learn state machine ────────────────────────────
-    // While listening for an IR signal the loop must be as tight as
-    // possible — WiFi/HTTP traffic causes interrupt jitter that corrupts
-    // the microsecond-level pulse timings the IR receiver depends on.
-    // So when we are in LISTENING state we poll the receiver and skip
-    // everything else (hub, telemetry, PID, etc.).
+    // LISTENING: pure IR polling — no WiFi calls at all (WiFi.status()
+    // at tight-loop speed corrupts the WiFi driver after a few seconds).
 #ifdef REAL_IR_TX
     if (gLearnState == LearnState::LISTENING) {
         const LearnPollResult lpr = gIrLearner.poll(gLearnTarget);
@@ -422,19 +422,38 @@ void loop() {
             gLearnState = LearnState::DONE_OK;
             gIrLearner.stopListen();
             Serial.printf("[LEARN] Success for %s\n", commandToString(gLearnTarget));
-            postLearnResult(gLearnTarget, true);
         } else if (nowMs - gLearnStartMs >= kLearnTimeoutMs) {
             gLearnState = LearnState::DONE_FAIL;
             gIrLearner.stopListen();
             Serial.printf("[LEARN] Timeout for %s\n", commandToString(gLearnTarget));
-            postLearnResult(gLearnTarget, false);
+        }
+        return;   // pure IR — nothing else
+    }
+
+    // DONE: learning finished, post result to hub.
+    // Runs on the NEXT iteration after LISTENING exits.
+    // delay(500) lets the WiFi driver fully recover after seconds of
+    // zero WiFi calls in the tight IR polling loop.
+    if (gLearnState == LearnState::DONE_OK || gLearnState == LearnState::DONE_FAIL) {
+        Serial.println("[LEARN] Posting result to hub…");
+        delay(500);
+        const bool ok = (gLearnState == LearnState::DONE_OK);
+        if (postLearnResult(gLearnTarget, ok)) {
+            gLearnState = LearnState::IDLE;
         } else {
-            return;   // stay in tight poll loop — no network, no PID
+            // postLearnResult already retried 5 times internally.
+            // Give up — hub auto-timeout will mark it as failed.
+            Serial.println("[LEARN] Giving up on POST — hub will auto-timeout");
+            gLearnState = LearnState::IDLE;
         }
     }
 #endif
 
-    // ── 1. Read room temperature ──────────────────────────────
+    // ── 1. Connectivity + time ───────────────────────────────
+    gHubConnectivity.tick(nowMs, gHubReceiver, gWallClock);
+    const WallClockSnapshot wallNow = gWallClock.now(nowMs, nowUs);
+
+    // ── 2. Read room temperature ──────────────────────────────
 #ifndef REAL_TEMP_SENSOR
     MockRoom::heaterOn = gHeaterPowered;
     MockRoom::update(nowMs);
@@ -442,10 +461,6 @@ void loop() {
 #else
     const float roomTempC = gTempSensor.readTemperatureC();
 #endif
-
-    // ── 2. Connectivity + time ────────────────────────────────
-    gHubConnectivity.tick(nowMs, gHubReceiver, gWallClock);
-    const WallClockSnapshot wallNow = gWallClock.now(nowMs, nowUs);
 
     // ── 3. Apply mode change from hub ─────────────────────────
     const char* pendingMode = gHubClient.pendingMode();
@@ -511,7 +526,7 @@ void loop() {
                 const Command irCmd = pidResult.steps > 0 ? Command::TEMP_UP : Command::TEMP_DOWN;
                 for (int s = 0; s < abs(pidResult.steps); s++) {
                     gIrSend.sendCommand(irCmd);
-                    delay(100);
+                    delay(50);
                 }
                 Serial.printf("[IR] Sent %s x%d\n",
                               gLastIrCmd, abs(pidResult.steps));
@@ -546,6 +561,7 @@ void loop() {
         gHubClient.submitTelemetry(t);
     }
 
+    gHubClient.tick(nowMs, wallNow, gHubConnectivity.wifiConnected());
     // ── 9. OLED update ────────────────────────────────────────
 #ifdef REAL_OLED
     updateDisplay(roomTempC, gTargetTempC, gHeaterPowered);
@@ -649,8 +665,9 @@ void loop() {
             gLearnState   = LearnState::LISTENING;
             gLearnStartMs = nowMs;
             gIrLearner.beginListen();
-            Serial.printf("[LEARN] Started listening for %s (10s timeout)\n",
-                          commandToString(cmd));
+            Serial.printf("[LEARN] Started listening for %s (%lus timeout)\n",
+                          commandToString(cmd),
+                          static_cast<unsigned long>(kLearnTimeoutMs / 1000));
 #endif
             break;
 

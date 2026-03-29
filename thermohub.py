@@ -9,10 +9,11 @@ Install:
 
 import json
 import csv
+import time
 import secrets
 import sqlite3
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from collections import defaultdict
@@ -521,10 +522,18 @@ def post_command(body: CommandIn):
 
     # Handle learn commands — update learn_state so dashboard can poll it
     if body.command in ("learn_on_off", "learn_temp_up", "learn_temp_down"):
+        # Flush any older pending learn commands so the ESP32 doesn't pick
+        # up stale ones after the current learn finishes.
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE commands SET source='sent' "
+                "WHERE command LIKE 'learn_%' AND source IN ('dashboard','schedule')"
+            )
+            conn.commit()
         learn_state["status"] = "listening"
-        learn_state["cmd"]    = body.command
-        learn_state["ts"]     = datetime.now(timezone.utc).isoformat()
-        log.info("Learn command queued: %s", body.command)
+        learn_state["cmd"]    = body.command.replace("learn_", "")   # "on_off" not "learn_on_off"
+        learn_state["ts"]     = time.time()
+        log.info("Learn command queued: %s (tracking as %s)", body.command, learn_state["cmd"])
         # fall through to enqueue as a regular command below
 
     if body.command == "learn_clear":
@@ -618,8 +627,26 @@ def get_pending_command():
 
 # ── IR Learn: GET status (dashboard polls this) ───────────────
 @app.get("/api/learn/status")
-def get_learn_status():
-    return learn_state
+def get_learn_status(ack: bool = False):
+    global learn_state
+
+    # Auto-timeout: ESP32 times out after 5s — if hub is still "listening"
+    # after 8s, the device result POST likely failed.  Mark as fail so the
+    # dashboard doesn't hang forever.
+    if learn_state["status"] == "listening" and learn_state["ts"]:
+        elapsed = time.time() - learn_state["ts"]
+        if elapsed > 8:
+            learn_state["status"] = "fail"
+            log.info("Learn auto-timed-out (%.1fs elapsed, no result from device)", elapsed)
+
+    current = learn_state.copy()
+
+    # Only reset to idle if the dashboard sends an 'ack' (acknowledgment)
+    if ack and learn_state["status"] in ["ok", "fail"]:
+        learn_state["status"] = "idle"
+        log.info("Learn state cleared by dashboard ack")
+
+    return current
 
 # ── IR Learn: POST result (ESP32 reports back) ────────────────
 class LearnResultIn(BaseModel):
@@ -634,7 +661,7 @@ def post_learn_result(body: LearnResultIn):
     global learn_state, learning_custom_button_id
     learn_state["status"] = body.status
     learn_state["cmd"]    = body.cmd
-    learn_state["ts"]     = datetime.now(timezone.utc).isoformat()
+    learn_state["ts"]     = time.time()
     log.info("Learn result received: cmd=%s status=%s", body.cmd, body.status)
 
     # Track which factory codes have been successfully learned
@@ -717,10 +744,14 @@ def learn_custom_button(button_id: int):
     # Update learn_state so dashboard polling sees "listening" (not stale "ok")
     learn_state["status"] = "listening"
     learn_state["cmd"]    = "learn_custom"
-    learn_state["ts"]     = datetime.now(timezone.utc).isoformat()
+    learn_state["ts"]     = time.time()
 
-    # Queue the learn command to the device
+    # Flush stale learn commands then queue the new one
     with get_db() as conn:
+        conn.execute(
+            "UPDATE commands SET source='sent' "
+            "WHERE command LIKE 'learn_%' AND source IN ('dashboard','schedule')"
+        )
         conn.execute("INSERT INTO commands (ts, command, source) VALUES (?,?,'dashboard')",
                      (datetime.utcnow().isoformat(), "learn_custom"))
         conn.commit()
