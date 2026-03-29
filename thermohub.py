@@ -629,15 +629,16 @@ def get_pending_command():
 @app.get("/api/learn/status")
 def get_learn_status(ack: bool = False):
     global learn_state
-    current = learn_state.copy()
+    res = learn_state.copy()
     
-    # Only reset to idle if the dashboard sends an 'ack'
+    # If the dashboard sends 'ack=true', it means it has updated the UI.
+    # We now reset to 'idle' so the next learn session starts fresh.
     if ack and learn_state["status"] in ["ok", "fail"]:
         learn_state["status"] = "idle"
         learn_state["cmd"] = None
-        log.info("Learn state cleared by dashboard ACK")
+        log.info("Learn state reset to idle via Dashboard ACK")
         
-    return current
+    return res
 # ── IR Learn: POST result (ESP32 reports back) ────────────────
 class LearnResultIn(BaseModel):
     cmd:     str   # "on_off" | "temp_up" | "temp_down" | "learn_custom"
