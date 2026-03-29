@@ -18,12 +18,6 @@ constexpr uint8_t kIrPwmChannel = 0;
 constexpr uint32_t kIrCarrierFreqHz = 38000;
 constexpr uint8_t kIrPwmResolutionBits = 8;
 
-// ── NEC protocol ─────────────────────────────────────────────
-constexpr uint16_t kNecDeviceAddress   = 0x0000;
-constexpr uint8_t  kNecCommandTempUp   = 0x46; // UP arrow
-constexpr uint8_t  kNecCommandTempDown = 0x15; // DOWN arrow
-constexpr uint8_t  kNecCommandToggle   = 0x40; // OK — toggles power on/off
-
 // ── Thermostat ────────────────────────────────────────────────
 constexpr bool  kSchedulerEnabled          = true;
 constexpr float kThermostatHysteresisC     = 1.0F;

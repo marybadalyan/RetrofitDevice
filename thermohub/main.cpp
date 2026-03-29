@@ -361,12 +361,44 @@ static void postLearnResult(Command cmd, bool success) {
     http.addHeader("X-Device-ID", DEVICE_ID);
     http.addHeader("Authorization", DEVICE_PASS);
     const char* cmdStr = "on_off";
-    if (cmd == Command::TEMP_UP)   cmdStr = "temp_up";
-    if (cmd == Command::TEMP_DOWN) cmdStr = "temp_down";
-    char body[64];
-    snprintf(body, sizeof(body), "{\"cmd\":\"%s\",\"status\":\"%s\"}",
-             cmdStr, success ? "ok" : "fail");
-    http.POST(body);
+    if (cmd == Command::TEMP_UP)       cmdStr = "temp_up";
+    if (cmd == Command::TEMP_DOWN)     cmdStr = "temp_down";
+    if (cmd == Command::LEARN_CUSTOM)  cmdStr = "learn_custom";
+
+    char body[256];
+
+    // For custom buttons, include the captured IR code so the hub can store it
+    if (cmd == Command::LEARN_CUSTOM && success) {
+        LearnedCode code;
+        if (gIrLearner.getLastCaptured(code)) {
+            snprintf(body, sizeof(body),
+                "{\"cmd\":\"%s\",\"status\":\"ok\","
+                "\"protocol\":%d,\"address\":%d,\"command\":%d}",
+                cmdStr, code.protocol, code.address, code.command);
+        } else {
+            snprintf(body, sizeof(body), "{\"cmd\":\"%s\",\"status\":\"ok\"}", cmdStr);
+        }
+    } else {
+        snprintf(body, sizeof(body), "{\"cmd\":\"%s\",\"status\":\"%s\"}",
+                 cmdStr, success ? "ok" : "fail");
+    }
+
+    // Try up to 5 times — a single transient failure leaves the dashboard
+    // stuck on "listening" because the hub never receives the result.
+    for (int attempt = 0; attempt < 5; ++attempt) {
+        const int code = http.POST(body);
+        if (code == 200) {
+            Serial.printf("[LEARN] Result posted OK: %s\n", cmdStr);
+            break;
+        }
+        Serial.printf("[LEARN] Result POST failed (HTTP %d), retry %d/5\n", code, attempt + 1);
+        http.end();
+        delay(500);
+        if (!http.begin(url)) break;
+        http.addHeader("Content-Type", "application/json");
+        http.addHeader("X-Device-ID", DEVICE_ID);
+        http.addHeader("Authorization", DEVICE_PASS);
+    }
     http.end();
 }
 #endif
@@ -378,6 +410,11 @@ void loop() {
     static uint32_t lastTelemetryMs = 0;
 
     // ── 0. IR learn state machine ────────────────────────────
+    // While listening for an IR signal the loop must be as tight as
+    // possible — WiFi/HTTP traffic causes interrupt jitter that corrupts
+    // the microsecond-level pulse timings the IR receiver depends on.
+    // So when we are in LISTENING state we poll the receiver and skip
+    // everything else (hub, telemetry, PID, etc.).
 #ifdef REAL_IR_TX
     if (gLearnState == LearnState::LISTENING) {
         const LearnPollResult lpr = gIrLearner.poll(gLearnTarget);
@@ -391,6 +428,8 @@ void loop() {
             gIrLearner.stopListen();
             Serial.printf("[LEARN] Timeout for %s\n", commandToString(gLearnTarget));
             postLearnResult(gLearnTarget, false);
+        } else {
+            return;   // stay in tight poll loop — no network, no PID
         }
     }
 #endif
@@ -519,6 +558,17 @@ void loop() {
         gHubReceiver.push(scheduledCmd);
     }
 
+    // ── 11a. Send custom IR (from custom buttons) ─────────────
+#ifdef REAL_IR_TX
+    if (gHubClient.hasPendingCustomIr()) {
+        auto ir = gHubClient.consumePendingCustomIr();
+        gIrLearner.sendCodeDirect(ir.protocol, ir.address, ir.command);
+        Serial.printf("[IR] Sent \"%s\": proto=%d addr=0x%04X cmd=0x%04X\n",
+                      ir.name[0] ? ir.name : "custom",
+                      ir.protocol, ir.address, ir.command);
+    }
+#endif
+
     // ── 11. Execute commands ──────────────────────────────────
     Command cmd;
     while (gHubReceiver.poll(cmd)) {
@@ -586,6 +636,7 @@ void loop() {
         case Command::LEARN_ON_OFF:
         case Command::LEARN_TEMP_UP:
         case Command::LEARN_TEMP_DOWN:
+        case Command::LEARN_CUSTOM:
 #ifdef REAL_IR_TX
             if (gLearnState == LearnState::LISTENING) {
                 // Already learning — cancel and restart for new target
@@ -593,12 +644,13 @@ void loop() {
             }
             if (cmd == Command::LEARN_ON_OFF)    gLearnTarget = Command::ON_OFF;
             else if (cmd == Command::LEARN_TEMP_UP)  gLearnTarget = Command::TEMP_UP;
-            else                                      gLearnTarget = Command::TEMP_DOWN;
+            else if (cmd == Command::LEARN_TEMP_DOWN)  gLearnTarget = Command::TEMP_DOWN;
+            else if (cmd == Command::LEARN_CUSTOM)    gLearnTarget = Command::LEARN_CUSTOM;
             gLearnState   = LearnState::LISTENING;
             gLearnStartMs = nowMs;
             gIrLearner.beginListen();
             Serial.printf("[LEARN] Started listening for %s (10s timeout)\n",
-                          commandToString(gLearnTarget));
+                          commandToString(cmd));
 #endif
             break;
 

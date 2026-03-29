@@ -86,11 +86,31 @@ void HubClient::pollCommand(const WallClockSnapshot& wallNow) {
         Serial.println("[HUB] Connected to hub successfully!");
     }
 
-    char cmdStr[16] = {0};
+    char cmdStr[32] = {0};
     if (!extractJsonString(payload, "command", cmdStr, sizeof(cmdStr))) {
         return;
     }
     if (cmdStr[0] == '\0' || strcmp(cmdStr, "null") == 0) {
+        return;
+    }
+
+    // Custom IR: hub resolved a custom button into raw IR data
+    if (strcmp(cmdStr, "send_ir") == 0) {
+        int protocol = 0, address = 0, irCommand = 0;
+        if (extractJsonInt(payload, "protocol", protocol) &&
+            extractJsonInt(payload, "address", address) &&
+            extractJsonInt(payload, "ir_command", irCommand)) {
+            pendingCustomIr_.protocol = static_cast<uint8_t>(protocol);
+            pendingCustomIr_.address  = static_cast<uint16_t>(address);
+            pendingCustomIr_.command  = static_cast<uint16_t>(irCommand);
+            pendingCustomIr_.valid    = true;
+            pendingCustomIr_.name[0]  = '\0';
+            extractJsonString(payload, "name",
+                              pendingCustomIr_.name, sizeof(pendingCustomIr_.name));
+            Serial.printf("[HUB] ✓ Custom IR queued: \"%s\" proto=%d addr=0x%04X cmd=0x%04X\n",
+                          pendingCustomIr_.name[0] ? pendingCustomIr_.name : "?",
+                          protocol, address, irCommand);
+        }
         return;
     }
 
@@ -196,6 +216,7 @@ Command HubClient::parseCommandString(const char* str) {
     if (strcmp(str, "learn_temp_up")  == 0) return Command::LEARN_TEMP_UP;
     if (strcmp(str, "learn_temp_down")== 0) return Command::LEARN_TEMP_DOWN;
     if (strcmp(str, "learn_clear")    == 0) return Command::LEARN_CLEAR_ALL;
+    if (strcmp(str, "learn_custom")   == 0) return Command::LEARN_CUSTOM;
     return Command::NONE;
 }
 
@@ -256,5 +277,21 @@ bool HubClient::extractJsonFloat(const String& payload, const char* key,
     const String numStr = payload.substring(numStart);
     outValue = numStr.toFloat();
     return (outValue != 0.0f || numStr[0] == '0');
+}
+
+bool HubClient::extractJsonInt(const String& payload, const char* key,
+                                int& outValue) {
+    if (!key) return false;
+    const String pattern = String("\"") + key + "\"";
+    const int keyPos = payload.indexOf(pattern);
+    if (keyPos < 0) return false;
+    const int colonPos = payload.indexOf(':', keyPos + pattern.length());
+    if (colonPos < 0) return false;
+    int numStart = colonPos + 1;
+    while (numStart < (int)payload.length() && payload[numStart] == ' ') ++numStart;
+    if (numStart >= (int)payload.length()) return false;
+    const String numStr = payload.substring(numStart);
+    outValue = numStr.toInt();
+    return (outValue != 0 || numStr[0] == '0');
 }
 #endif

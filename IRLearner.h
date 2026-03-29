@@ -12,6 +12,7 @@ struct LearnedCode {
 enum class LearnPollResult : uint8_t {
     PENDING = 0,  // still waiting for a recognisable signal
     OK      = 1,  // signal captured and saved to NVS
+    FAIL    = 2,  // no hardware available
 };
 
 // IRLearner: non-blocking IR-signal capture and NVS persistence.
@@ -40,11 +41,17 @@ public:
     bool getCode(Command cmd, LearnedCode& out) const;
     void clearAll();
 
+    // Retrieve the last captured code (valid after poll() returns OK).
+    // Used by custom-button learning to send IR data back to the hub.
+    bool getLastCaptured(LearnedCode& out) const;
+
     // ── Hardware send helpers (used by IRSender to avoid a second IRremote include) ──
     void beginSend();   // calls IrSender.begin(kIrTxPin)
     void sendCodeDirect(uint8_t protocol, uint16_t address, uint16_t command);
-    void sendNECDirect(uint16_t address, uint8_t command);   // NEC fallback
 
 private:
     static const char* nvsPrefix(Command cmd);   // e.g. "on", "up", "dn"
+
+    LearnedCode lastCaptured_{};
+    bool        hasLastCaptured_ = false;
 };

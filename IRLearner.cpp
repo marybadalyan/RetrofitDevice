@@ -112,14 +112,6 @@ void IRLearner::sendCodeDirect(uint8_t protocol, uint16_t address, uint16_t comm
 #endif
 }
 
-void IRLearner::sendNECDirect(uint16_t address, uint8_t command) {
-#if IRLEARNER_HW
-    IrSender.sendNEC(address, command, 0);
-#else
-    (void)address; (void)command;
-#endif
-}
-
 void IRLearner::beginListen() {
 #if IRLEARNER_HW
     IrReceiver.begin(kIrRxPin, DISABLE_LED_FEEDBACK);
@@ -167,6 +159,10 @@ LearnPollResult IRLearner::poll(Command targetCmd) {
                   code.protocol, code.address, code.command);
 
     IrReceiver.resume();
+
+    // Always store the last captured code (used by custom-button learning)
+    lastCaptured_    = code;
+    hasLastCaptured_ = true;
 
     const char* pfx = nvsPrefix(targetCmd);
     if (pfx) {
@@ -218,4 +214,10 @@ void IRLearner::clearAll() {
     }
     Serial.println("[LEARN] All learned codes cleared from NVS.");
 #endif
+}
+
+bool IRLearner::getLastCaptured(LearnedCode& out) const {
+    if (!hasLastCaptured_) return false;
+    out = lastCaptured_;
+    return true;
 }

@@ -11,6 +11,7 @@ enum class Command : uint8_t {
     LEARN_TEMP_UP  = 0x11,
     LEARN_TEMP_DOWN = 0x12,
     LEARN_CLEAR_ALL = 0x13,
+    LEARN_CUSTOM = 0x14,  // Generic learn for custom buttons
 };
 
 inline const char* commandToString(Command command) {
@@ -22,6 +23,7 @@ inline const char* commandToString(Command command) {
         case Command::LEARN_TEMP_UP:   return "LEARN_TEMP_UP";
         case Command::LEARN_TEMP_DOWN: return "LEARN_TEMP_DOWN";
         case Command::LEARN_CLEAR_ALL: return "LEARN_CLEAR_ALL";
+        case Command::LEARN_CUSTOM:    return "LEARN_CUSTOM";
         default:                       return "NONE";
     }
 }

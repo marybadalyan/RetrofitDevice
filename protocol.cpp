@@ -1,10 +1,15 @@
 #include "protocol.h"
 
-#include "prefferences.h"
-
 namespace protocol {
 
 namespace {
+// NEC constants used only by the heater-side receiver build.
+// The thermohub side uses learned codes (any protocol) instead.
+constexpr uint16_t kNecDeviceAddress   = 0x0000;
+constexpr uint8_t  kNecCommandTempUp   = 0x46;
+constexpr uint8_t  kNecCommandTempDown = 0x15;
+constexpr uint8_t  kNecCommandToggle   = 0x40;
+
 constexpr uint8_t invertByte(uint8_t value) {
     return static_cast<uint8_t>(~value);
 }

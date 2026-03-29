@@ -25,11 +25,6 @@ public:
     TxFailureCode sendCommand(Command command);
 
 private:
-    void mark(uint32_t timeMicros);
-    void space(uint32_t timeMicros);
-    void sendBit(bool bit);
-    void sendByte(uint8_t data);
-    TxFailureCode sendFrame(Command command);
     TxFailureCode sendLearnedCode(Command command);
 
     bool hardwareAvailable_ = true; // assume true until we check

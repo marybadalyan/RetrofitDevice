@@ -175,10 +175,12 @@ def is_authenticated(request: Request, device_id: str) -> bool:
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 def init_db():
     with get_db() as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript("""
         CREATE TABLE IF NOT EXISTS telemetry (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -214,6 +216,15 @@ def init_db():
             key   TEXT PRIMARY KEY,
             value TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS custom_buttons (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT NOT NULL UNIQUE,
+            protocol    INTEGER NOT NULL,
+            address     INTEGER NOT NULL,
+            command     INTEGER NOT NULL,
+            created_at  TEXT NOT NULL
+        );
         """)
     log.info("Database ready: %s", DB_PATH)
 
@@ -232,6 +243,14 @@ class TelemetryIn(BaseModel):
 class CommandIn(BaseModel):
     command: str   # 'on' | 'off' | 'temp_up' | 'temp_down'
     ir_only: bool = False  # if True, don't update target temp
+
+class CustomButtonIn(BaseModel):
+    name: str  # user-friendly name for the button
+
+class CustomButtonLearnResult(BaseModel):
+    protocol: int
+    address: int
+    command: int
 
 class ScheduleEntry(BaseModel):
     day:     str
@@ -277,13 +296,20 @@ learn_state = {
     "status": "idle",
     "cmd":    None,
     "ts":     None,
+    "learned": {},   # per-code learned status: {"on_off": True, "temp_up": True, …}
 }
+learning_custom_button_id: int = None  # Track which custom button is being learned
 
 # ── MANUAL OVERRIDE TRACKING ─────────────────────────────────
 # Tracks the last schedule slot that was active when user manually changed temp.
 # Schedule only overrides again when a NEW slot becomes active after the manual change.
 last_manual_temp_ts: float = 0.0          # when user last pressed +/-
 last_manual_slot_key: str = ""            # which slot was active at that moment
+
+# ── SCHEDULE COMMAND DEDUP ──────────────────────────────────
+# Prevents command-type schedule entries from firing every 10s telemetry cycle.
+# Each unique slot+command only fires once until the slot changes.
+last_schedule_cmd_key: str = ""
 
 # ─────────────────────────────────────────────────────────────
 #  ROUTES
@@ -358,6 +384,7 @@ def require_auth(device_id: str, request: Request):
 # ── ESP32: POST telemetry ──────────────────────────────────────
 @app.post("/api/telemetry")
 def post_telemetry(data: TelemetryIn, request: Request):
+    global last_schedule_cmd_key
     device_id = request.headers.get("X-Device-ID", "").upper()
     if device_id and device_id in DEVICES:
         auth_header = request.headers.get("Authorization", "")
@@ -408,28 +435,59 @@ def post_telemetry(data: TelemetryIn, request: Request):
             log.info("Pushing mode change to ESP32: %s → %s", reported_mode, cfg_mode)
 
     if action:
-        if action["type"] == "temp" and action["temp"] is not None and target_temp is not None:
+        if action["type"] == "temp" and action["temp"] is not None:
             # Build current slot key — only override if we're in a NEW slot since manual change
             now_local = datetime.now()
             current_slot_key = f"{now_local.strftime('%a')}_{action.get('slot_time', 'none')}"
             manual_was_in_this_slot = (current_slot_key == last_manual_slot_key)
 
             if not manual_was_in_this_slot:
-                # New slot fired after manual change — schedule resumes
-                if abs(action["temp"] - target_temp) >= 0.5:
-                    response["scheduled_target"] = action["temp"]
-                    log.info("Schedule temp override: %.1f°C (new slot: %s)", action["temp"], current_slot_key)
+                sched_temp = action["temp"]
+                need_update = target_temp is None or abs(sched_temp - target_temp) >= 0.5
+
+                # Auto-enable PID when a temp schedule fires
+                if not device_state["auto_control"]:
+                    device_state["auto_control"] = True
+                    with get_db() as conn:
+                        conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('auto_control', ?)",
+                                     (json.dumps(True),))
+                        conn.commit()
+                    response["auto_control"] = True
+                    log.info("Schedule auto-enabled PID control")
+
+                # Turn heater on if it's off
+                if not device_state["power"]:
+                    device_state["power"] = True
+                    with get_db() as conn:
+                        conn.execute("INSERT INTO commands (ts, command, source) VALUES (?,?,?)",
+                                     (datetime.utcnow().isoformat(), "on", "schedule"))
+                        conn.commit()
+                    log.info("Schedule turned heater ON")
+
+                if need_update:
+                    response["scheduled_target"] = sched_temp
+                    device_state["target_temp"] = sched_temp
+                    with get_db() as conn:
+                        conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('target_temp', ?)",
+                                     (json.dumps(sched_temp),))
+                        conn.commit()
+                    log.info("Schedule temp override: %.1f°C (slot: %s)", sched_temp, current_slot_key)
             else:
                 log.debug("Schedule suppressed — user manually changed temp in slot %s", current_slot_key)
 
         elif action["type"] == "command" and action["command"]:
-            with get_db() as conn:
-                conn.execute(
-                    "INSERT INTO commands (ts, command, source) VALUES (?,?,?)",
-                    (datetime.utcnow().isoformat(), action["command"], "schedule")
-                )
-                conn.commit()
-            log.info("Schedule command queued: %s", action["command"])
+            # Dedup: only fire each command slot once
+            now_local = datetime.now()
+            cmd_slot_key = f"{now_local.strftime('%a')}_{action.get('slot_time', 'none')}_{action['command']}"
+            if cmd_slot_key != last_schedule_cmd_key:
+                last_schedule_cmd_key = cmd_slot_key
+                with get_db() as conn:
+                    conn.execute(
+                        "INSERT INTO commands (ts, command, source) VALUES (?,?,?)",
+                        (datetime.utcnow().isoformat(), action["command"], "schedule")
+                    )
+                    conn.commit()
+                log.info("Schedule command queued: %s", action["command"])
 
     return response
 
@@ -519,6 +577,8 @@ def get_pending_command():
     """
     ESP32 calls this after each telemetry POST.
     Returns the most recent unacknowledged command if any, then marks it done.
+    For custom buttons, resolves the button ID to raw IR data so the device
+    can send it directly without needing to store codes locally.
     """
     with get_db() as conn:
         row = conn.execute("""
@@ -531,7 +591,30 @@ def get_pending_command():
             return {"command": None}
         conn.execute("UPDATE commands SET source='sent' WHERE id=?", (row["id"],))
         conn.commit()
-        return {"command": row["command"]}
+
+        cmd = row["command"]
+
+        # Resolve custom button to raw IR data
+        if cmd.startswith("custom_"):
+            try:
+                button_id = int(cmd.split("_", 1)[1])
+                btn = conn.execute(
+                    "SELECT name, protocol, address, command FROM custom_buttons WHERE id=?",
+                    (button_id,)
+                ).fetchone()
+                if btn and not (btn["protocol"] == 0 and btn["address"] == 0 and btn["command"] == 0):
+                    return {
+                        "command": "send_ir",
+                        "protocol": btn["protocol"],
+                        "address": btn["address"],
+                        "ir_command": btn["command"],
+                        "name": btn["name"]
+                    }
+            except (ValueError, IndexError):
+                pass
+            return {"command": None}
+
+        return {"command": cmd}
 
 # ── IR Learn: GET status (dashboard polls this) ───────────────
 @app.get("/api/learn/status")
@@ -540,17 +623,129 @@ def get_learn_status():
 
 # ── IR Learn: POST result (ESP32 reports back) ────────────────
 class LearnResultIn(BaseModel):
-    cmd:    str   # "on_off" | "temp_up" | "temp_down"
-    status: str   # "ok" | "fail"
+    cmd:     str   # "on_off" | "temp_up" | "temp_down" | "learn_custom"
+    status:  str   # "ok" | "fail"
+    protocol: Optional[int] = None  # IR protocol (for custom buttons)
+    address:  Optional[int] = None  # IR address
+    command:  Optional[int] = None  # IR command
 
 @app.post("/api/learn/result")
 def post_learn_result(body: LearnResultIn):
-    global learn_state
+    global learn_state, learning_custom_button_id
     learn_state["status"] = body.status
     learn_state["cmd"]    = body.cmd
     learn_state["ts"]     = datetime.now(timezone.utc).isoformat()
     log.info("Learn result received: cmd=%s status=%s", body.cmd, body.status)
+
+    # Track which factory codes have been successfully learned
+    if body.status == "ok" and body.cmd in ("on_off", "temp_up", "temp_down"):
+        learn_state["learned"][body.cmd] = True
+        with get_db() as conn:
+            conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('learned_codes', ?)",
+                         (json.dumps(learn_state["learned"]),))
+            conn.commit()
+
+    # If learning a custom button and got a successful result, save it
+    if body.cmd == "learn_custom" and body.status == "ok" and learning_custom_button_id:
+        if body.protocol is not None and body.address is not None and body.command is not None:
+            with get_db() as conn:
+                row = conn.execute("SELECT name FROM custom_buttons WHERE id=?", (learning_custom_button_id,)).fetchone()
+                if row:
+                    conn.execute(
+                        "UPDATE custom_buttons SET protocol=?, address=?, command=? WHERE id=?",
+                        (body.protocol, body.address, body.command, learning_custom_button_id)
+                    )
+                    conn.commit()
+                    log.info("Custom button saved: id=%d name=%s (proto=%d addr=0x%04X cmd=0x%04X)",
+                             learning_custom_button_id, row["name"], body.protocol, body.address, body.command)
+            learning_custom_button_id = None
+
     return {"status": "ok"}
+
+# ── Custom Buttons ────────────────────────────────────────────
+@app.post("/api/custom-buttons")
+def create_custom_button(body: CustomButtonIn):
+    """Create a new custom button (user will learn the code next)."""
+    with get_db() as conn:
+        try:
+            conn.execute(
+                "INSERT INTO custom_buttons (name, protocol, address, command, created_at) VALUES (?,?,?,?,?)",
+                (body.name, 0, 0, 0, datetime.utcnow().isoformat())
+            )
+            conn.commit()
+            row = conn.execute("SELECT id FROM custom_buttons WHERE name=?", (body.name,)).fetchone()
+            log.info("Custom button created: %s (id=%d)", body.name, row["id"])
+            return {"status": "ok", "id": row["id"], "name": body.name}
+        except sqlite3.IntegrityError:
+            raise HTTPException(400, f"Button name '{body.name}' already exists")
+
+@app.get("/api/custom-buttons")
+def list_custom_buttons():
+    """List all custom buttons."""
+    with get_db() as conn:
+        rows = conn.execute("SELECT id, name, protocol, address, command FROM custom_buttons ORDER BY id").fetchall()
+    return {"buttons": [dict(r) for r in rows]}
+
+@app.post("/api/custom-buttons/clear-ir")
+def clear_custom_buttons_ir():
+    """Reset IR data on all custom buttons (keeps the buttons themselves)."""
+    with get_db() as conn:
+        conn.execute("UPDATE custom_buttons SET protocol=0, address=0, command=0")
+        conn.commit()
+    log.info("All custom button IR codes cleared")
+    return {"status": "ok"}
+
+@app.delete("/api/custom-buttons/{button_id}")
+def delete_custom_button(button_id: int):
+    """Delete a custom button."""
+    with get_db() as conn:
+        conn.execute("DELETE FROM custom_buttons WHERE id=?", (button_id,))
+        conn.commit()
+    log.info("Custom button deleted: id=%d", button_id)
+    return {"status": "ok"}
+
+@app.post("/api/custom-buttons/{button_id}/learn")
+def learn_custom_button(button_id: int):
+    """Start learning for a custom button."""
+    global learning_custom_button_id, learn_state
+    with get_db() as conn:
+        row = conn.execute("SELECT name FROM custom_buttons WHERE id=?", (button_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "Button not found")
+    learning_custom_button_id = button_id
+
+    # Update learn_state so dashboard polling sees "listening" (not stale "ok")
+    learn_state["status"] = "listening"
+    learn_state["cmd"]    = "learn_custom"
+    learn_state["ts"]     = datetime.now(timezone.utc).isoformat()
+
+    # Queue the learn command to the device
+    with get_db() as conn:
+        conn.execute("INSERT INTO commands (ts, command, source) VALUES (?,?,'dashboard')",
+                     (datetime.utcnow().isoformat(), "learn_custom"))
+        conn.commit()
+    log.info("Starting learn for custom button: id=%d name=%s", button_id, row["name"])
+    return {"status": "ok", "id": button_id, "name": row["name"]}
+
+@app.post("/api/custom-buttons/{button_id}/send")
+def send_custom_button(button_id: int):
+    """Send IR command from a custom button."""
+    with get_db() as conn:
+        row = conn.execute("SELECT name, protocol, address, command FROM custom_buttons WHERE id=?", (button_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "Button not found")
+    if row["protocol"] == 0 and row["address"] == 0 and row["command"] == 0:
+        raise HTTPException(400, "Button not yet learned")
+
+    # Queue as a custom IR command (send only, no other effects)
+    with get_db() as conn:
+        conn.execute("INSERT INTO commands (ts, command, source) VALUES (?,?,?)",
+                     (datetime.utcnow().isoformat(), f"custom_{button_id}", "dashboard"))
+        conn.commit()
+    log.info("Custom button queued: %s (proto=%d addr=0x%04X cmd=0x%04X)",
+             row["name"], row["protocol"], row["address"], row["command"])
+    return {"status": "queued", "name": row["name"], "protocol": row["protocol"],
+            "address": row["address"], "command": row["command"]}
 
 # ── History ───────────────────────────────────────────────────
 @app.get("/api/history")
@@ -732,4 +927,9 @@ def startup():
             row = conn.execute("SELECT value FROM config WHERE key=?", (key,)).fetchone()
             if row is not None:
                 device_state[key] = json.loads(row["value"])
+        # Restore per-code learned status
+        row = conn.execute("SELECT value FROM config WHERE key='learned_codes'").fetchone()
+        if row is not None:
+            learn_state["learned"] = json.loads(row["value"])
+            log.info("Restored learned codes: %s", learn_state["learned"])
     log.info("ThermoHub ready — visit http://localhost:5000")

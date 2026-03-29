@@ -25,6 +25,15 @@ public:
         const char* mode    = "FAST";
     };
 
+    // Custom IR command data (for custom button sending)
+    struct PendingCustomIr {
+        uint8_t  protocol = 0;
+        uint16_t address  = 0;
+        uint16_t command  = 0;
+        char     name[32] = {};
+        bool     valid    = false;
+    };
+
     explicit HubClient(HubReceiver& receiver, Logger& logger);
 
     void tick(uint32_t nowMs, const WallClockSnapshot& wallNow, bool wifiConnected);
@@ -42,6 +51,14 @@ public:
     // Whether the hub wants the PID auto-control loop to run
     bool autoControl() const          { return autoControl_; }
 
+    // Custom IR: hub resolved a custom button to raw IR data
+    bool hasPendingCustomIr() const          { return pendingCustomIr_.valid; }
+    PendingCustomIr consumePendingCustomIr() {
+        PendingCustomIr ir = pendingCustomIr_;
+        pendingCustomIr_.valid = false;
+        return ir;
+    }
+
     void forceTelemetry() { lastTelemetryPostMs_ = 0; }
 private:
     void pollCommand(const WallClockSnapshot& wallNow);
@@ -55,6 +72,8 @@ private:
                                   float& outValue);
     static bool extractJsonBool(const String& payload, const char* key,
                                  bool& outValue);
+    static bool extractJsonInt(const String& payload, const char* key,
+                                int& outValue);
 #endif
 
     HubReceiver& receiver_;
@@ -69,4 +88,5 @@ private:
     float    scheduledTargetTemp_ = 0.0f;
     char     pendingMode_[8]      = {};
     bool     autoControl_         = false;
+    PendingCustomIr pendingCustomIr_{};
 };
