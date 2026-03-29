@@ -1028,50 +1028,54 @@ async function startLearn(command, key, label) {
     } catch(e) { console.error("Poll error:", e); }
   }, 250); // Slightly slower poll to give the Hub DB time to breath
 }
-
 async function learnCustomButton(buttonId) {
   if (learnPolling) clearInterval(learnPolling);
+  
+  // Set the global ID so renderCustomButtons knows which one is 'listening'
+  learningCustomButtonId = buttonId;
   const btn = customButtons.find(b => b.id === buttonId);
+  
+  // Re-render immediately to show the "listening" badge on the button
+  renderCustomButtons();
+  
   setLearnBanner(`Learning "${btn.name}"... Press your remote now.`, 'accent');
 
-  await fetch(HUB + `/api/custom-buttons/${buttonId}/learn`, {method: 'POST'});
+  try {
+    await fetch(HUB + `/api/custom-buttons/${buttonId}/learn`, {method: 'POST'});
+  } catch(e) {
+    toast("Server error starting learn");
+    return;
+  }
 
   let attempts = 0;
-  const maxAttempts = 60;
+  const maxAttempts = 60; // 15 seconds
 
   learnPolling = setInterval(async () => {
     attempts++;
     try {
       const d = await api('/api/learn/status');
       
-      // Note: Hub posts custom results with cmd: "learn_custom"
       if (d.status === 'ok' && d.cmd === 'learn_custom') {
         clearInterval(learnPolling);
         learnPolling = null;
+        learningCustomButtonId = null; // Clear learning state
+        
         await api('/api/learn/status?ack=true');
-        await loadCustomButtons(); // Refresh the list to enable the "Send" button
+        await loadCustomButtons(); // This will re-render everything
         setLearnBanner(`"${btn.name}" learned!`, 'green');
+        
       } else if (attempts >= maxAttempts) {
         clearInterval(learnPolling);
         learnPolling = null;
+        learningCustomButtonId = null; // Clear learning state
+        
         setLearnBanner('Learn timed out.', 'red');
-        renderCustomButtons(); // Reset UI state
         await api('/api/learn/status?ack=true');
+        renderCustomButtons(); // Show 'not learned' badge again
       }
     } catch(e) { console.error("Custom poll error:", e); }
   }, 250);
 }
-
-  // Auto-stop polling after 16s (ESP32 timeout=10s + hub auto-timeout=12s + margin)
-  setTimeout(() => {
-    if (!learnPolling) return;
-    clearInterval(learnPolling); learnPolling = null;
-    if (document.getElementById('learnBadge_' + key).classList.contains('listening')) {
-      setBadge(key, 'not-learned');
-      setLearnBanner('Timed out — no result received from device.', 'red');
-      fetch(HUB + '/api/learn/status?ack=true');
-    }
-  }, 10000);
 
 
 function clearLearnedCodes() {
@@ -1128,7 +1132,6 @@ function renderControlCustomButtons() {
     </button>
   `).join('');
 }
-
 function renderCustomButtons() {
   const list = document.getElementById('customButtonsList');
   const noCust = document.getElementById('noCustomButtons');
@@ -1140,10 +1143,14 @@ function renderCustomButtons() {
   noCust.style.display = 'none';
   list.innerHTML = customButtons.map(btn => {
     const isLearned = btn.protocol !== 0 || btn.address !== 0 || btn.command !== 0;
+    
+    // This part is critical: check if THIS button is currently being learned
     const isLearning = learningCustomButtonId === btn.id;
+    
     const badgeClass = isLearning ? 'listening' : isLearned ? 'learned' : 'not-learned';
     const badgeText = isLearning ? '● listening…' : isLearned ? '✓ learned' : 'not set';
     const sendDisabled = !isLearned || isLearning;
+    
     return `
       <div class="card" style="text-align:center;position:relative;">
         <button style="position:absolute;top:8px;right:8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem;"
