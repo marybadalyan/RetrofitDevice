@@ -538,6 +538,14 @@ def get_pending_command():
 def get_learn_status():
     return learn_state
 
+@app.get("/api/learn/status")
+def get_learn_status():
+    current = learn_state.copy()
+    if learn_state["status"] in ["ok", "fail"]:
+        # Reset to idle after the dashboard sees the result
+        learn_state["status"] = "idle" 
+    return current
+
 # ── IR Learn: POST result (ESP32 reports back) ────────────────
 class LearnResultIn(BaseModel):
     cmd:    str   # "on_off" | "temp_up" | "temp_down"

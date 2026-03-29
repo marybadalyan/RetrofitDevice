@@ -938,7 +938,7 @@ async function startLearn(command, key, label) {
         setLearnBanner(`No signal received for "${label}" — try again.`, 'red');
       }
     } catch(e) { /* ignore transient errors */ }
-  }, 1000);
+  }, 100);
 
   // Auto-stop polling after 12 s even if no result arrives
   setTimeout(() => {
