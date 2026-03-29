@@ -9,3 +9,5 @@ __pycache__/
 .DS_Store
 .vscode/
 .pkgs-hub/
+thermo.db-wal
+thermo.db-shm
