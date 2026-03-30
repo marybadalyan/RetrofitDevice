@@ -267,7 +267,7 @@ void setup() {
     Serial.println();
 #else
     bool reprovision = should_reprovision();
-    gLogger.beginPersistence("retrofit-log");
+    gLogger.beginPersistence("thermoDevice-log");
     WiFiManager wifiManager;
 
     wifiManager.setCustomHeadElement(portalCSS);

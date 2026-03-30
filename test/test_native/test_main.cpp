@@ -6,7 +6,7 @@
 #define private public
 #include "IRReciever.h"
 #include "app/adaptive_thermostat_tuning.h"
-#include "app/retrofit_controller.h"
+#include "app/thermo_device_controller.h"
 #undef private
 #include "heater/heater.h"
 #include "hub_additions/hub_ai_insights.h"
@@ -414,7 +414,7 @@ void test_ntp_clock_from_set_unix_ms_progresses_with_boot_ms() {
 }
 
 // Controller should log hub source event, then thermostat actions with TX failures in native mode.
-void test_retrofit_logs_command_then_tx_failure_in_native() {
+void test_thermoDevice_logs_command_then_tx_failure_in_native() {
     IRSender sender;
     sender.begin();
     IRReceiver receiver;
@@ -422,7 +422,7 @@ void test_retrofit_logs_command_then_tx_failure_in_native() {
     HubReceiver hub;
     CommandScheduler scheduler;
     Logger logger;
-    RetrofitController controller(sender, receiver, hub, scheduler, logger);
+    ThermoDeviceController controller(sender, receiver, hub, scheduler, logger);
     controller.begin(false);
 
     TEST_ASSERT_TRUE(hub.pushMockCommand(Command::ON));
@@ -484,7 +484,7 @@ void test_hub_has_priority_over_scheduler_when_both_ready() {
     HubReceiver hub;
     CommandScheduler scheduler;
     Logger logger;
-    RetrofitController controller(sender, receiver, hub, scheduler, logger);
+    ThermoDeviceController controller(sender, receiver, hub, scheduler, logger);
     controller.begin(true);
 
     TEST_ASSERT_TRUE(scheduler.addEntry(500, Command::OFF));
@@ -523,7 +523,7 @@ void test_hub_temp_up_changes_target_without_transmit_when_power_off() {
     HubReceiver hub;
     CommandScheduler scheduler;
     Logger logger;
-    RetrofitController controller(sender, receiver, hub, scheduler, logger);
+    ThermoDeviceController controller(sender, receiver, hub, scheduler, logger);
     controller.begin(false);
 
     const float initialTarget = controller.healthSnapshot().targetTemperatureC;
@@ -533,7 +533,7 @@ void test_hub_temp_up_changes_target_without_transmit_when_power_off() {
 
     controller.tick(600, 600000, wall, 20.0F);
 
-    const RetrofitController::HealthSnapshot after = controller.healthSnapshot();
+    const ThermoDeviceController::HealthSnapshot after = controller.healthSnapshot();
     TEST_ASSERT_FLOAT_WITHIN(0.01F, initialTarget + 1.0F, after.targetTemperatureC);
 
     TEST_ASSERT_EQUAL_UINT32(1, logger.size());
@@ -543,7 +543,7 @@ void test_hub_temp_up_changes_target_without_transmit_when_power_off() {
 }
 
 // Failed transmit path currently does not create COMMAND_DROPPED retries.
-void test_retrofit_no_retry_drop_logic_on_failed_transmit() {
+void test_thermoDevice_no_retry_drop_logic_on_failed_transmit() {
     IRSender sender;
     sender.begin();
     IRReceiver receiver;
@@ -551,7 +551,7 @@ void test_retrofit_no_retry_drop_logic_on_failed_transmit() {
     HubReceiver hub;
     CommandScheduler scheduler;
     Logger logger;
-    RetrofitController controller(sender, receiver, hub, scheduler, logger);
+    ThermoDeviceController controller(sender, receiver, hub, scheduler, logger);
     controller.begin(false);
 
     controller.powerEnabled_ = true;
@@ -999,11 +999,11 @@ int main(int, char**) {
     RUN_TEST(test_timeline_logs_full_wall_clock_sequence);
     RUN_TEST(test_host_local_time_timeline_preview);
     RUN_TEST(test_ntp_clock_from_set_unix_ms_progresses_with_boot_ms);
-    RUN_TEST(test_retrofit_logs_command_then_tx_failure_in_native);
+    RUN_TEST(test_thermoDevice_logs_command_then_tx_failure_in_native);
     RUN_TEST(test_heater_logs_received_command_and_apply_result_without_ack);
     RUN_TEST(test_hub_has_priority_over_scheduler_when_both_ready);
     RUN_TEST(test_hub_temp_up_changes_target_without_transmit_when_power_off);
-    RUN_TEST(test_retrofit_no_retry_drop_logic_on_failed_transmit);
+    RUN_TEST(test_thermoDevice_no_retry_drop_logic_on_failed_transmit);
     RUN_TEST(test_adaptive_tuning_increases_aggressiveness_when_heating_is_slow);
     RUN_TEST(test_adaptive_tuning_decreases_aggressiveness_when_heating_is_fast);
     RUN_TEST(test_adaptive_tuning_does_not_adjust_before_window);

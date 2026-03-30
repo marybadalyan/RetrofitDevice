@@ -3,8 +3,8 @@ name: ESP32 Hardware-in-the-Loop
 on:
   workflow_dispatch:
     inputs:
-      run_retrofit:
-        description: "Run retrofit board job"
+      run_thermoDevice:
+        description: "Run thermoDevice board job"
         required: false
         default: true
         type: boolean
@@ -15,11 +15,11 @@ on:
         type: boolean
 
 jobs:
-  retrofit:
-    if: ${{ inputs.run_retrofit }}
+  thermoDevice:
+    if: ${{ inputs.run_thermoDevice }}
     runs-on: [self-hosted, linux, esp32-lab]
     env:
-      PIO_ENV: retrofit
+      PIO_ENV: thermoDevice
       UPLOAD_PORT: /dev/ttyUSB0
       TEST_PORT: /dev/ttyUSB0
     steps:
@@ -63,10 +63,10 @@ jobs:
       - name: Run hardware tests if present
         working-directory: ${{ steps.pio-dir.outputs.dir }}
         run: |
-          if [ -d "test/test_hw_retrofit" ]; then
-            pio test -e "$PIO_ENV" -f test_hw_retrofit --upload-port "$UPLOAD_PORT" --test-port "$TEST_PORT" -v
+          if [ -d "test/test_hw_thermoDevice" ]; then
+            pio test -e "$PIO_ENV" -f test_hw_thermoDevice --upload-port "$UPLOAD_PORT" --test-port "$TEST_PORT" -v
           else
-            echo "No test/test_hw_retrofit suite found; upload-only run complete."
+            echo "No test/test_hw_thermoDevice suite found; upload-only run complete."
           fi
 
   heater:

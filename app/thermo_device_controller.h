@@ -12,7 +12,7 @@
 #include "adaptive_thermostat_tuning.h"
 #include "pid_thermostat_controller.h"
 
-class RetrofitController {
+class ThermoDeviceController {
 public:
     struct HealthSnapshot {
         bool powerEnabled = false;
@@ -22,7 +22,7 @@ public:
         TxFailureCode lastTxFailure = TxFailureCode::NONE;
     };
 
-    RetrofitController(IRSender& irSender,
+    ThermoDeviceController(IRSender& irSender,
                        IRReceiver& irReceiver,
                        HubReceiver& hubReceiver,
                        CommandScheduler& scheduler,

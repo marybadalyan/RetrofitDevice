@@ -3,7 +3,7 @@
 #define private public
 #include "IRSender.h"
 #include "IRReciever.h"
-#include "app/retrofit_controller.h"
+#include "app/thermo_device_controller.h"
 #undef private
 
 #include "hub/hub_receiver.h"
@@ -52,7 +52,7 @@ void test_integration_hub_on_updates_state_without_ack() {
     HubReceiver hub;
     CommandScheduler scheduler;
     Logger logger;
-    RetrofitController retrofit(sender, receiver, hub, scheduler, logger);
+    ThermoDeviceController retrofit(sender, receiver, hub, scheduler, logger);
     retrofit.begin(false);
 
     TEST_ASSERT_TRUE(hub.pushMockCommand(Command::ON));
@@ -84,7 +84,7 @@ void test_integration_thermostat_turns_off_and_heater_applies_off() {
     HubReceiver hub;
     CommandScheduler scheduler;
     Logger logger;
-    RetrofitController retrofit(sender, receiver, hub, scheduler, logger);
+    ThermoDeviceController retrofit(sender, receiver, hub, scheduler, logger);
     retrofit.begin(false);
 
     retrofit.powerEnabled_ = true;
@@ -116,7 +116,7 @@ void test_integration_no_command_drop_without_ack_logic() {
     HubReceiver hub;
     CommandScheduler scheduler;
     Logger logger;
-    RetrofitController retrofit(sender, receiver, hub, scheduler, logger);
+    ThermoDeviceController retrofit(sender, receiver, hub, scheduler, logger);
     retrofit.begin(false);
 
     retrofit.powerEnabled_ = true;
@@ -147,7 +147,7 @@ void test_integration_hub_overrides_scheduler_for_current_tick() {
     HubReceiver hub;
     CommandScheduler scheduler;
     Logger logger;
-    RetrofitController retrofit(sender, receiver, hub, scheduler, logger);
+    ThermoDeviceController retrofit(sender, receiver, hub, scheduler, logger);
     retrofit.begin(true);
 
     TEST_ASSERT_TRUE(scheduler.addEntry(500, Command::OFF));
