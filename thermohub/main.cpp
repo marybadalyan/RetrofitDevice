@@ -447,25 +447,24 @@ void loop() {
     // Runs on the NEXT iteration after LISTENING exits.
     // delay(500) lets the WiFi driver fully recover after seconds of
     // zero WiFi calls in the tight IR polling loop.
-   if (gLearnState == LearnState::DONE_OK || gLearnState == LearnState::DONE_FAIL) {
-    Serial.println("[LEARN] Posting result to hub…");
-    
-    // Give the WiFi radio more time to "wake up" after the tight loop
-    delay(500); 
-    
-    const bool ok = (gLearnState == LearnState::DONE_OK);
-    
-    // We MUST successfully POST the custom IR data, or the button will be empty (0,0,0)
-    if (postLearnResult(gLearnTarget, ok)) {
-        gLearnState = LearnState::IDLE;
-        // Force a sync so the Hub knows the 'learn_custom' command is finished
-        gHubClient.tick(millis(), wallNow, true);  
-    } else {
-        // If it fails after retries, we stay in DONE state to try again next loop
-        // OR we timeout. For now, let's reset to avoid an infinite loop.
-        gLearnState = LearnState::IDLE;
+    if (gLearnState == LearnState::DONE_OK || gLearnState == LearnState::DONE_FAIL) {
+        Serial.println("[LEARN] Posting result to hub…");
+
+        // Give the WiFi radio more time to "wake up" after the tight loop
+        delay(500);
+
+        const bool ok = (gLearnState == LearnState::DONE_OK);
+
+        // We MUST successfully POST the custom IR data, or the button will be empty (0,0,0)
+        if (postLearnResult(gLearnTarget, ok)) {
+            gLearnState = LearnState::IDLE;
+            // Force a sync so the Hub knows the 'learn_custom' command is finished
+            gHubClient.tick(millis(), wallNow, true);
+        } else {
+            // If it fails after retries, reset to avoid an infinite loop.
+            gLearnState = LearnState::IDLE;
+        }
     }
-}
 #endif
 
     // ── 3. Apply mode change from hub ─────────────────────────
@@ -567,7 +566,6 @@ void loop() {
         gHubClient.submitTelemetry(t);
     }
 
-    gHubClient.tick(nowMs, wallNow, gHubConnectivity.wifiConnected());
     // ── 9. OLED update ────────────────────────────────────────
 #ifdef REAL_OLED
     updateDisplay(roomTempC, gTargetTempC, gHeaterPowered);

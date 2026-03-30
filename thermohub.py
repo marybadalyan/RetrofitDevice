@@ -293,6 +293,7 @@ device_state = {
 # ── IR LEARN STATE ─────────────────────────────────────────────
 # Tracks the last learn operation for the dashboard to poll.
 # status: "idle" | "listening" | "ok" | "fail"
+LEARN_STALE_TIMEOUT = 10  # seconds — auto-expire a stuck "listening" session
 learn_state = {
     "status": "idle",
     "cmd":    None,
@@ -300,6 +301,18 @@ learn_state = {
     "learned": {},   # per-code learned status: {"on_off": True, "temp_up": True, …}
 }
 learning_custom_button_id: int = None  # Track which custom button is being learned
+
+def is_learn_busy() -> bool:
+    """True if a learn session is actively in progress (not stale)."""
+    if learn_state["status"] != "listening":
+        return False
+    # Auto-expire stale sessions so the user isn't locked out forever
+    if learn_state["ts"] and (time.time() - learn_state["ts"]) > LEARN_STALE_TIMEOUT:
+        learn_state["status"] = "idle"
+        learn_state["cmd"]    = None
+        log.warning("Stale learn session auto-expired after %ds", LEARN_STALE_TIMEOUT)
+        return False
+    return True
 
 # ── MANUAL OVERRIDE TRACKING ─────────────────────────────────
 # Tracks the last schedule slot that was active when user manually changed temp.
@@ -522,6 +535,9 @@ def post_command(body: CommandIn):
 
     # Handle learn commands — update learn_state so dashboard can poll it
     if body.command in ("learn_on_off", "learn_temp_up", "learn_temp_down"):
+        # Reject if a learn session is already in progress
+        if is_learn_busy():
+            raise HTTPException(409, "Another learn session is in progress. Wait for it to finish or time out.")
         # Flush any older pending learn commands so the ESP32 doesn't pick
         # up stale ones after the current learn finishes.
         with get_db() as conn:
@@ -629,15 +645,18 @@ def get_pending_command():
 @app.get("/api/learn/status")
 def get_learn_status(ack: bool = False):
     global learn_state
+    # Auto-expire stale "listening" sessions on every poll
+    is_learn_busy()
+
     res = learn_state.copy()
-    
+
     # If the dashboard sends 'ack=true', it means it has updated the UI.
     # We now reset to 'idle' so the next learn session starts fresh.
     if ack and learn_state["status"] in ["ok", "fail"]:
         learn_state["status"] = "idle"
         learn_state["cmd"] = None
         log.info("Learn state reset to idle via Dashboard ACK")
-        
+
     return res
 # ── IR Learn: POST result (ESP32 reports back) ────────────────
 class LearnResultIn(BaseModel):
@@ -730,6 +749,10 @@ def learn_custom_button(button_id: int):
         row = conn.execute("SELECT name FROM custom_buttons WHERE id=?", (button_id,)).fetchone()
     if not row:
         raise HTTPException(404, "Button not found")
+    # Reject if a learn session is already in progress
+    if is_learn_busy():
+        raise HTTPException(409, "Another learn session is in progress. Wait for it to finish or time out.")
+
     learning_custom_button_id = button_id
 
     # Update learn_state so dashboard polling sees "listening" (not stale "ok")

@@ -631,6 +631,7 @@ function toast(msg, d=2500){
 async function api(path, method='GET', body=null){
   try{
     const r=await fetch(HUB+path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):null});
+    if(!r.ok) return null;
     return await r.json();
   }catch(e){return null;}
 }
@@ -994,14 +995,39 @@ function setLearnBanner(msg, color) {
     ? 'rgba(220,38,38,.2)' : 'rgba(192,108,132,.3)');
   b.textContent = msg;
 }
-async function startLearn(command, key, label) {
+// Disable/enable ALL learn buttons to prevent overlapping sessions
+function setAllLearnButtonsDisabled(disabled) {
+  document.querySelectorAll('[onclick^="startLearn"], [onclick^="learnCustomButton"]').forEach(b => {
+    b.disabled = disabled;
+    b.style.opacity = disabled ? '0.4' : '';
+    b.style.pointerEvents = disabled ? 'none' : '';
+  });
+}
+
+function finishLearnSession() {
   if (learnPolling) clearInterval(learnPolling);
+  learnPolling = null;
+  learningCmd = null;
+  learningCustomButtonId = null;
+  setAllLearnButtonsDisabled(false);
+  renderCustomButtons();
+}
+
+async function startLearn(command, key, label) {
+  if (learnPolling) return; // session already running
   learningCmd = key;
   setBadge(key, 'listening');
+  setAllLearnButtonsDisabled(true);
   setLearnBanner(`Waiting for "${label}"... Press your remote now.`, 'accent');
 
   // Send the command to the hub
-  await api('/api/command', 'POST', {command});
+  const r = await api('/api/command', 'POST', {command});
+  if (!r) {
+    finishLearnSession();
+    setBadge(key, 'not-learned');
+    setLearnBanner('Hub offline or another learn session is active.', 'red');
+    return;
+  }
 
   let attempts = 0;
   const maxAttempts = 60; // 60 * 250ms = 15 seconds of persistent polling
@@ -1010,39 +1036,50 @@ async function startLearn(command, key, label) {
     attempts++;
     try {
       const d = await api('/api/learn/status');
-      
+
       // key will be 'on_off', 'temp_up', or 'temp_down'
       if (d.status === 'ok' && d.cmd === key) {
-        clearInterval(learnPolling);
-        learnPolling = null;
+        finishLearnSession();
         await api('/api/learn/status?ack=true'); // Reset server state
         setBadge(key, 'learned');
         setLearnBanner(`"${label}" learned successfully!`, 'green');
       } else if (attempts >= maxAttempts) {
-        clearInterval(learnPolling);
-        learnPolling = null;
+        finishLearnSession();
         setBadge(key, 'not-learned');
         setLearnBanner('Timed out. Please try again.', 'red');
         await api('/api/learn/status?ack=true');
       }
     } catch(e) { console.error("Poll error:", e); }
-  }, 250); // Slightly slower poll to give the Hub DB time to breath
+  }, 250); // Slightly slower poll to give the Hub DB time to breathe
 }
+
 async function learnCustomButton(buttonId) {
-  if (learnPolling) clearInterval(learnPolling);
-  
+  if (learnPolling) return; // session already running
+
   // Set the global ID so renderCustomButtons knows which one is 'listening'
   learningCustomButtonId = buttonId;
   const btn = customButtons.find(b => b.id === buttonId);
-  
+
   // Re-render immediately to show the "listening" badge on the button
+  setAllLearnButtonsDisabled(true);
   renderCustomButtons();
-  
+
   setLearnBanner(`Learning "${btn.name}"... Press your remote now.`, 'accent');
 
   try {
-    await fetch(HUB + `/api/custom-buttons/${buttonId}/learn`, {method: 'POST'});
+    const r = await fetch(HUB + `/api/custom-buttons/${buttonId}/learn`, {method: 'POST'});
+    if (r.status === 409) {
+      finishLearnSession();
+      setLearnBanner('Another learn session is active. Wait for it to finish.', 'red');
+      return;
+    }
+    if (!r.ok) {
+      finishLearnSession();
+      setLearnBanner('Server error starting learn.', 'red');
+      return;
+    }
   } catch(e) {
+    finishLearnSession();
     toast("Server error starting learn");
     return;
   }
@@ -1054,24 +1091,17 @@ async function learnCustomButton(buttonId) {
     attempts++;
     try {
       const d = await api('/api/learn/status');
-      
+
       if (d.status === 'ok' && d.cmd === 'learn_custom') {
-        clearInterval(learnPolling);
-        learnPolling = null;
-        learningCustomButtonId = null; // Clear learning state
-        
+        finishLearnSession();
         await api('/api/learn/status?ack=true');
         await loadCustomButtons(); // This will re-render everything
         setLearnBanner(`"${btn.name}" learned!`, 'green');
-        
+
       } else if (attempts >= maxAttempts) {
-        clearInterval(learnPolling);
-        learnPolling = null;
-        learningCustomButtonId = null; // Clear learning state
-        
+        finishLearnSession();
         setLearnBanner('Learn timed out.', 'red');
         await api('/api/learn/status?ack=true');
-        renderCustomButtons(); // Show 'not learned' badge again
       }
     } catch(e) { console.error("Custom poll error:", e); }
   }, 250);
