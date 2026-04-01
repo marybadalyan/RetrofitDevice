@@ -3,7 +3,7 @@ set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 <env_name> [monitor_baud]"
-  echo "Example: $0 retrofit 115200"
+  echo "Example: $0 thermoDevice 115200"
   exit 1
 fi
 

@@ -1,6 +1,6 @@
-# RetrofitDevice
+# ThermoDevice
 
-An IoT system that retrofits legacy IR-controlled heaters (and other appliances) with WiFi remote control, intelligent scheduling, PID thermostat control, and a web dashboard. The system learns the IR codes from an existing physical remote and replays them over WiFi commands.
+An IoT system that thermoDevices legacy IR-controlled heaters (and other appliances) with WiFi remote control, intelligent scheduling, PID thermostat control, and a web dashboard. The system learns the IR codes from an existing physical remote and replays them over WiFi commands.
 
 ---
 
@@ -30,7 +30,7 @@ The system has four main components:
 
 ```
 ┌──────────────┐       IR        ┌──────────────┐
-│   Retrofit   │ ─────────────►  │    Legacy     │
+│ ThermoDevice │ ─────────────►  │    Legacy     │
 │  Controller  │   (38 kHz NEC)  │    Heater     │
 │   (ESP32)    │                 │  (or Sim.)    │
 └──────┬───────┘                 └──────────────┘
@@ -43,7 +43,7 @@ The system has four main components:
 └──────────────┘
 ```
 
-1. **Retrofit Controller** (ESP32 firmware) — Connects to WiFi, polls the hub for commands, reads room temperature, runs a PID thermostat loop, and transmits IR commands to the heater.
+1. **ThermoDevice Controller** (ESP32 firmware) — Connects to WiFi, polls the hub for commands, reads room temperature, runs a PID thermostat loop, and transmits IR commands to the heater.
 2. **Heater Simulator** (ESP32 firmware) — Receives IR commands and displays status on an OLED. Used for development/testing without a real heater.
 3. **ThermoHub Server** (Python/FastAPI) — Central server that stores telemetry, queues commands, manages schedules, and serves the web dashboard.
 4. **Dashboard** (Single-page HTML/JS) — Responsive web UI for live control, scheduling, history charts, PID tuning, and IR learning.
@@ -54,7 +54,7 @@ The system has four main components:
 
 | Component | Purpose | Notes |
 |-----------|---------|-------|
-| 2x ESP32 dev boards | Retrofit controller + heater simulator | 30-pin or 38-pin |
+| 2x ESP32 dev boards | ThermoDevice controller + heater simulator | 30-pin or 38-pin |
 | IR LED + 470 Ohm resistor | IR transmission | Connected to TX pin (default GPIO 4) |
 | IR receiver module (38 kHz) | IR reception | e.g. TSOP38238, connected to RX pin (default GPIO 15) |
 | DS18B20 temperature sensor | Room temperature reading | 1-Wire, with 4.7k pull-up resistor |
@@ -73,11 +73,11 @@ The system has four main components:
 
 | Library | Version | Used By |
 |---------|---------|---------|
-| ArduinoJson | 6.21.0+ | retrofit |
-| WiFiManager | 2.0.17+ | retrofit |
-| OneWire | stable | retrofit |
-| DallasTemperature | stable | retrofit |
-| IRremote | 4.0.0 | retrofit, heater, capture |
+| ArduinoJson | 6.21.0+ | thermoDevice |
+| WiFiManager | 2.0.17+ | thermoDevice |
+| OneWire | stable | thermoDevice |
+| DallasTemperature | stable | thermoDevice |
+| IRremote | 4.0.0 | thermoDevice, heater, capture |
 | Adafruit SSD1306 | stable | heater |
 | Adafruit GFX Library | stable | heater |
 | Adafruit BusIO | stable | heater |
@@ -115,7 +115,7 @@ pip install platformio
 ## Project Structure
 
 ```
-RetrofitDevice/
+ThermoDevice/
 ├── platformio.ini              # Build configuration (4 environments)
 ├── dashboard.html              # Web UI (single-file, ~65 KB)
 ├── thermohub.py                # Hub server (FastAPI)
@@ -123,11 +123,11 @@ RetrofitDevice/
 ├── devices.csv                 # Device ID + password registry
 ├── start_hub.sh                # Hub launch script
 │
-├── thermohub/                  # Retrofit firmware entry point
+├── thermohub/                  # ThermoDevice firmware entry point
 │   └── main.cpp
 │
 ├── app/                        # Application logic
-│   ├── retrofit_controller.*   # Top-level orchestrator
+│   ├── thermoDevice_controller.*   # Top-level orchestrator
 │   ├── pid_thermostat_controller.*  # PID control loop
 │   ├── adaptive_thermostat_tuning.* # Self-tuning PID
 │   └── room_temp_sensor.*      # Temperature sensor abstraction
@@ -181,10 +181,10 @@ RetrofitDevice/
 
 All builds use PlatformIO. The project defines four build environments in `platformio.ini`:
 
-### Retrofit Controller (main device)
+### ThermoDevice Controller (main device)
 
 ```bash
-pio run -e retrofit
+pio run -e thermoDevice
 ```
 
 Builds the WiFi-connected thermostat controller with IR transmission, temperature sensing, PID control, and hub communication.
@@ -220,8 +220,8 @@ Runs the Unity-based test suite on your host machine (no hardware needed).
 Set the correct USB port in `platformio.ini` (`upload_port` and `monitor_port`), then:
 
 ```bash
-# Flash the retrofit controller
-pio run -t upload -e retrofit
+# Flash the thermoDevice controller
+pio run -t upload -e thermoDevice
 
 # Flash the heater simulator (different USB port)
 pio run -t upload -e heater
@@ -233,7 +233,7 @@ pio device monitor -b 115200
 Or use the helper script:
 
 ```bash
-./scripts/flash_and_monitor.sh retrofit 115200
+./scripts/flash_and_monitor.sh thermoDevice 115200
 ```
 
 This flashes the firmware and immediately opens the serial monitor. Logs are saved to `artifacts/<env>-serial.log`.
@@ -280,7 +280,7 @@ The hub uses SQLite with WAL journaling (`thermo.db`). Tables are created automa
 
 ## First Boot & WiFi Provisioning
 
-When the retrofit controller boots without saved WiFi credentials:
+When the thermoDevice controller boots without saved WiFi credentials:
 
 1. The device creates a WiFi hotspot named **ThermoSetup**
 2. Connect your phone or computer to the `ThermoSetup` network
@@ -333,7 +333,7 @@ The system learns IR codes from your existing physical remote so it can replay t
 
 1. In the dashboard **Config** tab, click **Learn** next to a button (e.g., ON/OFF)
 2. The hub sets the device to listening mode
-3. Point your physical remote at the retrofit controller's IR receiver
+3. Point your physical remote at the thermoDevice controller's IR receiver
 4. Press the corresponding button on the remote
 5. The device captures the signal, decodes the protocol, and stores it in flash (NVS)
 6. The dashboard shows a success confirmation
@@ -469,7 +469,7 @@ Tests are located in `test/test_native/test_main.cpp` using the Unity test frame
 
 ### Hardware Integration Testing
 
-With two ESP32 boards (one retrofit, one heater simulator):
+With two ESP32 boards (one thermoDevice, one heater simulator):
 
 1. Flash both boards
 2. Start the hub server
@@ -542,7 +542,7 @@ Dashboard click
     -> Device polls GET /api/command/pending
     -> Hub returns {"command": "temp_up"}
     -> HubReceiver pushes to FIFO
-    -> RetrofitController::tick() pops command
+    -> ThermoDeviceController::tick() pops command
     -> IRSender::sendCommand(TEMP_UP)
     -> IRLearner retrieves learned code from NVS
     -> IRremote modulates 38 kHz carrier on GPIO

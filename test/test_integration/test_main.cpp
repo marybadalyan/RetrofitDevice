@@ -52,15 +52,15 @@ void test_integration_hub_on_updates_state_without_ack() {
     HubReceiver hub;
     CommandScheduler scheduler;
     Logger logger;
-    RetrofitController retrofit(sender, receiver, hub, scheduler, logger);
-    retrofit.begin(false);
+    ThermoDeviceController thermoDevice(sender, receiver, hub, scheduler, logger);
+    thermoDevice.begin(false);
 
     TEST_ASSERT_TRUE(hub.pushMockCommand(Command::ON));
 
     WallClockSnapshot wall = makeWall(20260223, 1, 6, 0, 0, 1000, 1000000);
-    retrofit.tick(1000, 1000000, wall, 20.0F);
+    thermoDevice.tick(1000, 1000000, wall, 20.0F);
 
-    TEST_ASSERT_TRUE(retrofit.powerEnabled_);
+    TEST_ASSERT_TRUE(thermoDevice.powerEnabled_);
     bool sawTempUp = false;
     for (size_t i = 0; i < logger.size(); ++i) {
         if (logger.entries()[i].type == LogEventType::THERMOSTAT_CONTROL &&
@@ -84,14 +84,14 @@ void test_integration_thermostat_turns_off_and_heater_applies_off() {
     HubReceiver hub;
     CommandScheduler scheduler;
     Logger logger;
-    RetrofitController retrofit(sender, receiver, hub, scheduler, logger);
-    retrofit.begin(false);
+    ThermoDeviceController thermoDevice(sender, receiver, hub, scheduler, logger);
+    thermoDevice.begin(false);
 
-    retrofit.powerEnabled_ = true;
-    retrofit.targetTemperatureC_ = 22.0F;
+    thermoDevice.powerEnabled_ = true;
+    thermoDevice.targetTemperatureC_ = 22.0F;
 
     WallClockSnapshot wall = makeWall(20260223, 1, 6, 10, 0, 2000, 2000000);
-    retrofit.tick(2000, 2000000, wall, 24.0F);
+    thermoDevice.tick(2000, 2000000, wall, 24.0F);
 
     bool sawTempDown = false;
     for (size_t i = 0; i < logger.size(); ++i) {
@@ -116,15 +116,15 @@ void test_integration_no_command_drop_without_ack_logic() {
     HubReceiver hub;
     CommandScheduler scheduler;
     Logger logger;
-    RetrofitController retrofit(sender, receiver, hub, scheduler, logger);
-    retrofit.begin(false);
+    ThermoDeviceController thermoDevice(sender, receiver, hub, scheduler, logger);
+    thermoDevice.begin(false);
 
-    retrofit.powerEnabled_ = true;
-    retrofit.heaterCommandedOn_ = false;
-    retrofit.targetTemperatureC_ = 22.0F;
+    thermoDevice.powerEnabled_ = true;
+    thermoDevice.heaterCommandedOn_ = false;
+    thermoDevice.targetTemperatureC_ = 22.0F;
 
     WallClockSnapshot wall = makeWall(20260223, 1, 6, 20, 0, 1000, 1000000);
-    retrofit.tick(1000, 1000000, wall, 30.0F);
+    thermoDevice.tick(1000, 1000000, wall, 30.0F);
 
     bool sawDrop = false;
     for (size_t i = 0; i < logger.size(); ++i) {
@@ -147,14 +147,14 @@ void test_integration_hub_overrides_scheduler_for_current_tick() {
     HubReceiver hub;
     CommandScheduler scheduler;
     Logger logger;
-    RetrofitController retrofit(sender, receiver, hub, scheduler, logger);
-    retrofit.begin(true);
+    ThermoDeviceController thermoDevice(sender, receiver, hub, scheduler, logger);
+    thermoDevice.begin(true);
 
     TEST_ASSERT_TRUE(scheduler.addEntry(500, Command::OFF));
     TEST_ASSERT_TRUE(hub.pushMockCommand(Command::ON));
 
     WallClockSnapshot wall = makeWall(20260223, 1, 6, 30, 0, 500, 500000);
-    retrofit.tick(500, 500000, wall, 20.0F);
+    thermoDevice.tick(500, 500000, wall, 20.0F);
 
     TEST_ASSERT_TRUE(logger.size() >= 1);
     TEST_ASSERT_EQUAL(LogEventType::HUB_COMMAND_RX, logger.entries()[0].type);
@@ -162,7 +162,7 @@ void test_integration_hub_overrides_scheduler_for_current_tick() {
 
     wall.bootMs = 520;
     wall.bootUs = 520000;
-    retrofit.tick(520, 520000, wall, 20.0F);
+    thermoDevice.tick(520, 520000, wall, 20.0F);
 
     bool sawScheduleAfterHub = false;
     for (size_t i = 1; i < logger.size(); ++i) {

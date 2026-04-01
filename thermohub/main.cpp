@@ -137,11 +137,12 @@ namespace {
     IRLearner gIrLearner;
 
     // ── Learn state machine ──────────────────────────────────
-    enum class LearnState { IDLE, LISTENING, DONE_OK, DONE_FAIL };
+    enum class LearnState { IDLE, WARMUP, LISTENING, DONE_OK, DONE_FAIL };
     LearnState gLearnState    = LearnState::IDLE;
     Command    gLearnTarget   = Command::NONE;
     uint32_t   gLearnStartMs  = 0;
-    constexpr uint32_t kLearnTimeoutMs = 5000;
+    constexpr uint32_t kLearnWarmupMs   = 800;   // WiFi-active grace period before IR capture
+    constexpr uint32_t kLearnTimeoutMs  = 10000;
 #endif
 
 #ifdef REAL_OLED
@@ -267,7 +268,7 @@ void setup() {
     Serial.println();
 #else
     bool reprovision = should_reprovision();
-    gLogger.beginPersistence("retrofit-log");
+    gLogger.beginPersistence("thermoDevice-log");
     WiFiManager wifiManager;
 
     wifiManager.setCustomHeadElement(portalCSS);
@@ -423,12 +424,31 @@ void loop() {
     const float roomTempC = MockRoom::roomTempC;
 #else
     const float roomTempC = gTempSensor.readTemperatureC();
+    // If target was never properly initialised (sensor was disconnected at boot),
+    // sync it to the first valid room reading.
+    if (gTargetTempC < -100.0f && roomTempC > -100.0f) {
+        gTargetTempC = roomTempC;
+        gPid.reset(roomTempC);
+        Serial.printf("[SENSOR] Target synced to room: %.1f°C\n", roomTempC);
+    }
 #endif
 
     // ── 0. IR learn state machine ────────────────────────────
+    // WARMUP: brief WiFi-active delay so the receiver hardware settles and
+    //         the user sees a "get ready" prompt before we need them to press.
     // LISTENING: pure IR polling — no WiFi calls at all (WiFi.status()
-    // at tight-loop speed corrupts the WiFi driver after a few seconds).
+    //         at tight-loop speed corrupts the WiFi driver after a few seconds).
 #ifdef REAL_IR_TX
+    if (gLearnState == LearnState::WARMUP) {
+        if (nowMs - gLearnStartMs >= kLearnWarmupMs) {
+            gIrLearner.beginListen();
+            gLearnStartMs = nowMs;   // timeout counts from here, not from command receipt
+            gLearnState   = LearnState::LISTENING;
+            Serial.println("[LEARN] >>> PRESS YOUR REMOTE NOW <<<");
+        }
+        // Normal loop continues during warmup — WiFi still active
+    }
+
     if (gLearnState == LearnState::LISTENING) {
         const LearnPollResult lpr = gIrLearner.poll(gLearnTarget);
         if (lpr == LearnPollResult::OK) {
@@ -659,19 +679,17 @@ void loop() {
         case Command::LEARN_CUSTOM:
 #ifdef REAL_IR_TX
             if (gLearnState == LearnState::LISTENING) {
-                // Already learning — cancel and restart for new target
+                // Already capturing — cancel and restart for new target
                 gIrLearner.stopListen();
             }
-            if (cmd == Command::LEARN_ON_OFF)    gLearnTarget = Command::ON_OFF;
+            if (cmd == Command::LEARN_ON_OFF)        gLearnTarget = Command::ON_OFF;
             else if (cmd == Command::LEARN_TEMP_UP)  gLearnTarget = Command::TEMP_UP;
-            else if (cmd == Command::LEARN_TEMP_DOWN)  gLearnTarget = Command::TEMP_DOWN;
-            else if (cmd == Command::LEARN_CUSTOM)    gLearnTarget = Command::LEARN_CUSTOM;
-            gLearnState   = LearnState::LISTENING;
+            else if (cmd == Command::LEARN_TEMP_DOWN) gLearnTarget = Command::TEMP_DOWN;
+            else if (cmd == Command::LEARN_CUSTOM)   gLearnTarget = Command::LEARN_CUSTOM;
+            gLearnState   = LearnState::WARMUP;
             gLearnStartMs = nowMs;
-            gIrLearner.beginListen();
-            Serial.printf("[LEARN] Started listening for %s (%lus timeout)\n",
-                          commandToString(cmd),
-                          static_cast<unsigned long>(kLearnTimeoutMs / 1000));
+            Serial.printf("[LEARN] Setting up for %s — get your remote ready…\n",
+                          commandToString(cmd));
 #endif
             break;
 

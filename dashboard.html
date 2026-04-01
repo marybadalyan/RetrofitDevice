@@ -999,8 +999,17 @@ function setLearnBanner(msg, color) {
 function setAllLearnButtonsDisabled(disabled) {
   document.querySelectorAll('[onclick^="startLearn"], [onclick^="learnCustomButton"]').forEach(b => {
     b.disabled = disabled;
-    b.style.opacity = disabled ? '0.4' : '';
     b.style.pointerEvents = disabled ? 'none' : '';
+    b.style.cursor = disabled ? 'not-allowed' : '';
+    b.style.background = disabled ? 'var(--surface)' : '';
+    b.style.color = disabled ? 'var(--muted)' : '';
+    b.style.borderColor = disabled ? 'var(--border)' : '';
+    b.style.opacity = '';
+    // Only the active startLearn button changes text; others stay "Learn"
+    if (b.getAttribute('onclick')?.startsWith('startLearn')) {
+      const isActive = disabled && learningCmd && b.getAttribute('onclick').includes(`'${learningCmd}'`);
+      b.textContent = isActive ? 'Listening…' : 'Learn';
+    }
   });
 }
 
@@ -1018,7 +1027,7 @@ async function startLearn(command, key, label) {
   learningCmd = key;
   setBadge(key, 'listening');
   setAllLearnButtonsDisabled(true);
-  setLearnBanner(`Waiting for "${label}"... Press your remote now.`, 'accent');
+  setLearnBanner(`Setting up "${label}"… get your remote ready.`, 'accent');
 
   // Send the command to the hub
   const r = await api('/api/command', 'POST', {command});
@@ -1028,6 +1037,11 @@ async function startLearn(command, key, label) {
     setLearnBanner('Hub offline or another learn session is active.', 'red');
     return;
   }
+
+  // Match ESP32 WARMUP delay — banner flips to "press now" after device is ready
+  setTimeout(() => {
+    if (learningCmd === key) setLearnBanner(`PRESS "${label}" on your remote now!`, 'accent');
+  }, 1500);
 
   let attempts = 0;
   const maxAttempts = 60; // 60 * 250ms = 15 seconds of persistent polling
@@ -1050,7 +1064,7 @@ async function startLearn(command, key, label) {
         await api('/api/learn/status?ack=true');
       }
     } catch(e) { console.error("Poll error:", e); }
-  }, 250); // Slightly slower poll to give the Hub DB time to breathe
+  }, 250);
 }
 
 async function learnCustomButton(buttonId) {
@@ -1064,7 +1078,7 @@ async function learnCustomButton(buttonId) {
   setAllLearnButtonsDisabled(true);
   renderCustomButtons();
 
-  setLearnBanner(`Learning "${btn.name}"... Press your remote now.`, 'accent');
+  setLearnBanner(`Setting up "${btn.name}"… get your remote ready.`, 'accent');
 
   try {
     const r = await fetch(HUB + `/api/custom-buttons/${buttonId}/learn`, {method: 'POST'});
@@ -1083,6 +1097,11 @@ async function learnCustomButton(buttonId) {
     toast("Server error starting learn");
     return;
   }
+
+  // Match ESP32 WARMUP delay — banner flips to "press now" after device is ready
+  setTimeout(() => {
+    if (learningCustomButtonId === buttonId) setLearnBanner(`PRESS "${btn.name}" on your remote now!`, 'accent');
+  }, 1500);
 
   let attempts = 0;
   const maxAttempts = 60; // 15 seconds
@@ -1307,6 +1326,8 @@ function closeDeleteButtonModal() {
 
 async function confirmDeleteButton(buttonId) {
   closeDeleteButtonModal();
+  // Cancel any active learn session for this button before deleting
+  if (learningCustomButtonId === buttonId) finishLearnSession();
   try {
     await fetch(HUB + `/api/custom-buttons/${buttonId}`, {method: 'DELETE'});
     customButtons = customButtons.filter(b => b.id !== buttonId);

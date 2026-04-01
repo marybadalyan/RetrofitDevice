@@ -18,7 +18,7 @@ const char* sourceLabel(LogEventType sourceType) {
 }
 }  // namespace
 
-RetrofitController::RetrofitController(IRSender& irSender,
+ThermoDeviceController::ThermoDeviceController(IRSender& irSender,
                                        IRReceiver& irReceiver,
                                        HubReceiver& hubReceiver,
                                        CommandScheduler& scheduler,
@@ -30,11 +30,11 @@ RetrofitController::RetrofitController(IRSender& irSender,
       logger_(logger),
       targetTemperatureC_(kDefaultTargetTemperatureC) {}
 
-void RetrofitController::begin(bool schedulerEnabled) {
+void ThermoDeviceController::begin(bool schedulerEnabled) {
     scheduler_.setEnabled(schedulerEnabled);
 }
 
-RetrofitController::HealthSnapshot RetrofitController::healthSnapshot() const {
+ThermoDeviceController::HealthSnapshot ThermoDeviceController::healthSnapshot() const {
     HealthSnapshot snapshot{};
     snapshot.powerEnabled = powerEnabled_;
     snapshot.heaterCommandedOn = heaterCommandedOn_;
@@ -44,16 +44,16 @@ RetrofitController::HealthSnapshot RetrofitController::healthSnapshot() const {
     return snapshot;
 }
 
-void RetrofitController::setThermostatMode(ThermostatMode mode) {
+void ThermoDeviceController::setThermostatMode(ThermostatMode mode) {
     pidController_.setMode(mode);
     pidController_.clearRuntimeOverrides();
 }
 
-ThermostatMode RetrofitController::thermostatMode() const {
+ThermostatMode ThermoDeviceController::thermostatMode() const {
     return pidController_.mode();
 }
 
-void RetrofitController::tick(uint32_t nowMs,
+void ThermoDeviceController::tick(uint32_t nowMs,
                               uint32_t nowUs,
                               const WallClockSnapshot& wallNow,
                               float roomTemperatureC) {
@@ -69,7 +69,7 @@ void RetrofitController::tick(uint32_t nowMs,
     runThermostatLoop(nowMs, wallNow, roomTemperatureC);
 }
 
-bool RetrofitController::chooseNextCommand(uint32_t nowMs,
+bool ThermoDeviceController::chooseNextCommand(uint32_t nowMs,
                                            const WallClockSnapshot& wallNow,
                                            Command& outCommand,
                                            LogEventType& sourceType) {
@@ -89,7 +89,7 @@ bool RetrofitController::chooseNextCommand(uint32_t nowMs,
     return false;
 }
 
-bool RetrofitController::applyThermostatControlCommand(Command command) {
+bool ThermoDeviceController::applyThermostatControlCommand(Command command) {
     switch (command) {
         case Command::ON_OFF:
             powerEnabled_ = !powerEnabled_;
@@ -105,7 +105,7 @@ bool RetrofitController::applyThermostatControlCommand(Command command) {
     }
 }
 
-void RetrofitController::runThermostatLoop(uint32_t nowMs,
+void ThermoDeviceController::runThermostatLoop(uint32_t nowMs,
                                             const WallClockSnapshot& wallNow,
                                             float roomTemperatureC) {
     if (!powerEnabled_) {
@@ -140,7 +140,7 @@ void RetrofitController::runThermostatLoop(uint32_t nowMs,
     }
 }
 
-void RetrofitController::sendCommand(Command command, const WallClockSnapshot& wallNow, LogEventType sourceType) {
+void ThermoDeviceController::sendCommand(Command command, const WallClockSnapshot& wallNow, LogEventType sourceType) {
     logger_.log(wallNow, sourceType, command, true);
 
     if (diag::enabled(DiagLevel::INFO)) {
