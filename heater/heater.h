@@ -10,7 +10,7 @@ public:
     bool powerEnabled() const;
     void setPowerEnabled(bool enabled);
 private:
-    bool powerEnabled_ = false;
+    bool powerEnabled_ = true;
 };
 
 class DisplayDriver {

@@ -32,6 +32,13 @@ bool IRReceiver::poll(DecodedFrame& outFrame) {
         return false;
     }
 
+    const uint32_t now = millis();
+    if (cmd == lastCmd_ && (now - lastCmdMs_) < kDebouncMs) {
+        return false;
+    }
+    lastCmd_   = cmd;
+    lastCmdMs_ = now;
+
     Serial.printf("[IR-RX] cmd=0x%02X -> %s\n", cmdByte, commandToString(cmd));
     outFrame.command = cmd;
     return true;

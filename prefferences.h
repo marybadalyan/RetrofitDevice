@@ -33,7 +33,7 @@ constexpr const char* kHubHost = "192.168.0.15";
 constexpr int         kHubPort = 5000;
 
 constexpr uint32_t kHubCommandPollIntervalMs = 100U;
-constexpr uint32_t kHubTelemetryIntervalMs   = 1000U;
+constexpr uint32_t kHubTelemetryIntervalMs   = 2000U;
 constexpr int      kHubHttpTimeoutMs         = 2000;
 
 // ── NTP ───────────────────────────────────────────────────────
