@@ -1,12 +1,24 @@
 #include "IRReciever.h"
 #include "prefferences.h"
-#include "protocol.h"
 
 #if __has_include(<Arduino.h>)
 
 #define RECORD_GAP_MICROS 5000  // ignore NEC repeat bursts
 #include <IRremote.hpp>
 #include <Arduino.h>
+
+namespace {
+constexpr uint8_t kCmdTempUp   = 0x46;
+constexpr uint8_t kCmdTempDown = 0x15;
+constexpr uint8_t kCmdToggle   = 0x40;
+
+bool decodeCommand(uint8_t byte, Command& out) {
+    if (byte == kCmdToggle)   { out = Command::ON_OFF;    return true; }
+    if (byte == kCmdTempUp)   { out = Command::TEMP_UP;   return true; }
+    if (byte == kCmdTempDown) { out = Command::TEMP_DOWN; return true; }
+    return false;
+}
+} // namespace
 
 void IRReceiver::begin() {
     IrReceiver.begin(kIrRxPin, DISABLE_LED_FEEDBACK);
@@ -27,7 +39,7 @@ bool IRReceiver::poll(DecodedFrame& outFrame) {
     IrReceiver.resume();
 
     Command cmd = Command::NONE;
-    if (!protocol::decodeCommand(cmdByte, cmd)) {
+    if (!decodeCommand(cmdByte, cmd)) {
         Serial.printf("[IR-RX] unknown cmd=0x%02X\n", cmdByte);
         return false;
     }
