@@ -20,7 +20,7 @@
 #endif
 
 HubClient::HubClient(HubReceiver& receiver, Logger& logger)
-    : receiver_(receiver), logger_(logger) {}
+    : receiver_(receiver), logger_(logger), crypto_(DEVICE_PASS) {}
 
 void HubClient::tick(uint32_t nowMs,
                      const WallClockSnapshot& wallNow,
@@ -67,6 +67,8 @@ void HubClient::pollCommand(const WallClockSnapshot& wallNow) {
         return;
     }
 
+    http.addHeader("X-Device-ID", DEVICE_ID);
+    http.addHeader("X-Encrypted", "1");
     const int httpCode = http.GET();
     if (httpCode != 200) {
         http.end();
@@ -76,8 +78,13 @@ void HubClient::pollCommand(const WallClockSnapshot& wallNow) {
     }
 
     hubReachable_ = true;
-    const String payload = http.getString();
+    const String raw = http.getString();
     http.end();
+
+    // Decrypt hub response; fall back to raw if it looks like plain JSON
+    const String payload = (raw.length() > 0 && raw[0] != '{')
+                           ? crypto_.decryptEnvelope(raw)
+                           : raw;
 
     // Log successful poll
     static bool firstPoll = true;
@@ -164,10 +171,11 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
         pendingTelemetry_.integral
     );
 
-    http.addHeader("Content-Type", "application/json");
+    const String envelope = crypto_.encryptEnvelope(String(body));
+    http.addHeader("Content-Type", "application/x-encrypted");
     http.addHeader("X-Device-ID", DEVICE_ID);
     http.addHeader("Authorization", DEVICE_PASS);
-    const int httpCode = http.POST(body);
+    const int httpCode = http.POST(envelope);
 
     if (httpCode != 200) {
         http.end();
@@ -176,8 +184,13 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
     }
 
     hubReachable_ = true;
-    const String response = http.getString();
+    const String encResponse = http.getString();
     http.end();
+
+    // Decrypt hub response; fall back to raw if it looks like plain JSON
+    const String response = (encResponse.length() > 0 && encResponse[0] != '{')
+                            ? crypto_.decryptEnvelope(encResponse)
+                            : encResponse;
 
     float scheduledTarget = 0.0f;
     if (extractJsonFloat(response, "scheduled_target", scheduledTarget)) {

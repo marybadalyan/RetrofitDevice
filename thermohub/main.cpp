@@ -263,7 +263,11 @@ void setup() {
 
 #ifdef DEV_WIFI_SSID
     Serial.println("[WIFI] Dev mode: connecting with hardcoded credentials...");
-    WiFi.begin(DEV_WIFI_SSID, DEV_WIFI_PASSWORD);
+    if (strlen(DEV_WIFI_PASSWORD) == 0) {
+        WiFi.begin(DEV_WIFI_SSID);
+    } else {
+        WiFi.begin(DEV_WIFI_SSID, DEV_WIFI_PASSWORD);
+    }
     while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
     Serial.println();
 #else

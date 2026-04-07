@@ -13,6 +13,9 @@ import time
 import secrets
 import sqlite3
 import logging
+import hashlib
+import hmac as hmac_lib
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -26,6 +29,56 @@ from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
+
+# ── CRYPTO ────────────────────────────────────────────────────
+# Mirrors MessageCrypto in crypto/message_crypto.h/.cpp
+# Requires: pip install cryptography
+class MessageCrypto:
+    """AES-128-CTR + HMAC-SHA256 authenticated encryption.
+
+    Envelope format: "<ts>:<hex(nonce16||ciphertext)>:<hex(hmac32)>"
+    Keys derived from device password via SHA-256:
+      aes_key  = sha256(password)[0:16]
+      hmac_key = sha256(password)[0:32]
+    """
+
+    def __init__(self, password: str):
+        h = hashlib.sha256(password.encode()).digest()
+        self._aes_key  = h[:16]
+        self._hmac_key = h
+
+    def _aes_ctr(self, nonce16: bytes, data: bytes) -> bytes:
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        from cryptography.hazmat.backends import default_backend
+        cipher = Cipher(algorithms.AES(self._aes_key), modes.CTR(nonce16),
+                        backend=default_backend())
+        enc = cipher.encryptor()
+        return enc.update(data) + enc.finalize()
+
+    def encrypt_envelope(self, plaintext: str) -> str:
+        nonce = os.urandom(16)
+        ciphertext = self._aes_ctr(nonce, plaintext.encode())
+        ts  = str(int(time.time() * 1000))
+        enc = (nonce + ciphertext).hex()
+        mac = hmac_lib.new(self._hmac_key, f"{ts}:{enc}".encode(), hashlib.sha256).hexdigest()
+        return f"{ts}:{enc}:{mac}"
+
+    def decrypt_envelope(self, envelope: str) -> str | None:
+        parts = envelope.split(":", 2)
+        if len(parts) != 3:
+            return None
+        ts_str, enc, sig_hex = parts
+        expected = hmac_lib.new(self._hmac_key,
+                                f"{ts_str}:{enc}".encode(),
+                                hashlib.sha256).hexdigest()
+        if not hmac_lib.compare_digest(expected, sig_hex):
+            return None
+        raw = bytes.fromhex(enc)
+        if len(raw) < 16:
+            return None
+        plaintext = self._aes_ctr(raw[:16], raw[16:])
+        return plaintext.decode()
+
 
 # ── CONFIG ────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
@@ -289,6 +342,9 @@ device_state = {
     "last_seen":    None,
     "auto_control": False,
 }
+# Set to True when the user explicitly disables PID via the dashboard.
+# Prevents the schedule from re-enabling it until the user turns it on again.
+user_disabled_auto_control = False
 
 # ── IR LEARN STATE ─────────────────────────────────────────────
 # Tracks the last learn operation for the dashboard to poll.
@@ -397,13 +453,36 @@ def require_auth(device_id: str, request: Request):
 
 # ── ESP32: POST telemetry ──────────────────────────────────────
 @app.post("/api/telemetry")
-def post_telemetry(data: TelemetryIn, request: Request):
+async def post_telemetry(request: Request):
     global last_schedule_cmd_key
-    device_id = request.headers.get("X-Device-ID", "").upper()
+    device_id  = request.headers.get("X-Device-ID", "").upper()
+    encrypted  = request.headers.get("Content-Type", "") == "application/x-encrypted"
+    device_pwd = None
+
     if device_id and device_id in DEVICES:
+        device_pwd = DEVICES[device_id]["password"]
         auth_header = request.headers.get("Authorization", "")
-        if auth_header != DEVICES[device_id]["password"]:
+        if auth_header != device_pwd:
             raise HTTPException(401, "Unauthorized")
+
+    raw_body = await request.body()
+    raw_str = raw_body.decode()
+    json_str = raw_str  # default: treat as plain JSON
+
+    crypto_active = False
+    if encrypted and device_pwd:
+        decrypted = MessageCrypto(device_pwd).decrypt_envelope(raw_str)
+        if decrypted is not None:
+            json_str = decrypted
+            crypto_active = True
+        else:
+            log.warning("Telemetry decryption failed for %s — falling back to plain JSON", device_id)
+
+    try:
+        data = TelemetryIn(**json.loads(json_str))
+    except Exception as e:
+        log.error("Failed to parse telemetry body: %s | raw: %.80s", e, raw_str)
+        raise HTTPException(400, "Bad telemetry body")
     now = datetime.utcnow().isoformat()
 
     # -999 is the ESP32 sentinel for "no sensor connected" — treat as None
@@ -459,8 +538,8 @@ def post_telemetry(data: TelemetryIn, request: Request):
                 sched_temp = action["temp"]
                 need_update = target_temp is None or abs(sched_temp - target_temp) >= 0.5
 
-                # Auto-enable PID when a temp schedule fires
-                if not device_state["auto_control"]:
+                # Auto-enable PID when a temp schedule fires — but not if the user explicitly disabled it
+                if not device_state["auto_control"] and not user_disabled_auto_control:
                     device_state["auto_control"] = True
                     with get_db() as conn:
                         conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('auto_control', ?)",
@@ -503,6 +582,12 @@ def post_telemetry(data: TelemetryIn, request: Request):
                     conn.commit()
                 log.info("Schedule command queued: %s", action["command"])
 
+    if crypto_active:
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(
+            MessageCrypto(device_pwd).encrypt_envelope(json.dumps(response)),
+            media_type="application/x-encrypted"
+        )
     return response
 
 # ── Dashboard: GET current status ─────────────────────────────
@@ -516,7 +601,9 @@ class AutoControlIn(BaseModel):
 
 @app.post("/api/autocontrol")
 def set_auto_control(body: AutoControlIn):
+    global user_disabled_auto_control
     device_state["auto_control"] = body.enabled
+    user_disabled_auto_control = not body.enabled  # remember if user explicitly turned it off
     with get_db() as conn:
         conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('auto_control', ?)",
                      (json.dumps(body.enabled),))
@@ -598,13 +685,27 @@ def post_command(body: CommandIn):
 
 # ── ESP32: poll for pending command ───────────────────────────
 @app.get("/api/command/pending")
-def get_pending_command():
+def get_pending_command(request: Request):
     """
     ESP32 calls this after each telemetry POST.
     Returns the most recent unacknowledged command if any, then marks it done.
     For custom buttons, resolves the button ID to raw IR data so the device
     can send it directly without needing to store codes locally.
+    Encrypts the response when the device sends X-Encrypted: 1.
     """
+    device_id = request.headers.get("X-Device-ID", "").upper()
+    want_encrypted = request.headers.get("X-Encrypted", "0") == "1"
+    device_pwd = DEVICES.get(device_id, {}).get("password") if device_id else None
+
+    def _maybe_encrypt(payload: dict) -> object:
+        if want_encrypted and device_pwd:
+            from fastapi.responses import PlainTextResponse
+            return PlainTextResponse(
+                MessageCrypto(device_pwd).encrypt_envelope(json.dumps(payload)),
+                media_type="application/x-encrypted"
+            )
+        return payload
+
     with get_db() as conn:
         row = conn.execute("""
             SELECT id, command FROM commands
@@ -613,7 +714,7 @@ def get_pending_command():
             ORDER BY id DESC LIMIT 1
         """).fetchone()
         if not row:
-            return {"command": None}
+            return _maybe_encrypt({"command": None})
         conn.execute("UPDATE commands SET source='sent' WHERE id=?", (row["id"],))
         conn.commit()
 
@@ -628,18 +729,18 @@ def get_pending_command():
                     (button_id,)
                 ).fetchone()
                 if btn and not (btn["protocol"] == 0 and btn["address"] == 0 and btn["command"] == 0):
-                    return {
+                    return _maybe_encrypt({
                         "command": "send_ir",
                         "protocol": btn["protocol"],
                         "address": btn["address"],
                         "ir_command": btn["command"],
                         "name": btn["name"]
-                    }
+                    })
             except (ValueError, IndexError):
                 pass
-            return {"command": None}
+            return _maybe_encrypt({"command": None})
 
-        return {"command": cmd}
+        return _maybe_encrypt({"command": cmd})
 
 # ── IR Learn: GET status (dashboard polls this) ───────────────
 @app.get("/api/learn/status")
@@ -968,10 +1069,15 @@ def get_scheduled_action_now() -> dict | None:
 def startup():
     init_db()
     with get_db() as conn:
-        for key in ("auto_control", "target_temp"):
+        for key in ("target_temp",):
             row = conn.execute("SELECT value FROM config WHERE key=?", (key,)).fetchone()
             if row is not None:
                 device_state[key] = json.loads(row["value"])
+        # Always start with auto control off — user must enable it explicitly
+        device_state["auto_control"] = False
+        conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('auto_control', ?)",
+                     (json.dumps(False),))
+        conn.commit()
         # Restore per-code learned status
         row = conn.execute("SELECT value FROM config WHERE key='learned_codes'").fetchone()
         if row is not None:

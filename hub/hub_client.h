@@ -10,6 +10,7 @@
 #include "../logger.h"
 #include "../time/wall_clock.h"
 #include "hub_receiver.h"
+#include "../crypto/message_crypto.h"
 
 class HubClient {
 public:
@@ -76,8 +77,9 @@ private:
                                 int& outValue);
 #endif
 
-    HubReceiver& receiver_;
-    Logger&      logger_;
+    HubReceiver&  receiver_;
+    Logger&       logger_;
+    MessageCrypto crypto_;
 
     Telemetry    pendingTelemetry_{};
     bool         hasPendingTelemetry_ = false;
