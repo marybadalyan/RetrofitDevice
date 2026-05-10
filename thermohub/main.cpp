@@ -141,8 +141,8 @@ namespace {
     LearnState gLearnState    = LearnState::IDLE;
     Command    gLearnTarget   = Command::NONE;
     uint32_t   gLearnStartMs  = 0;
-    constexpr uint32_t kLearnWarmupMs   = 800;   // WiFi-active grace period before IR capture
-    constexpr uint32_t kLearnTimeoutMs  = 10000;
+    constexpr uint32_t kLearnWarmupMs   = 700;   // WiFi-active grace period before IR capture
+    constexpr uint32_t kLearnTimeoutMs  = 8000;
 #endif
 
 #ifdef REAL_OLED
@@ -353,6 +353,14 @@ void setup() {
         Serial.println("[OLED] Display ready.");
     }
 #endif
+
+    Serial.println("[MONITOR] ── Initial state ─────────────────────────");
+    Serial.printf ("[MONITOR]   Power   : %s\n",   gHeaterPowered ? "ON" : "OFF");
+    Serial.printf ("[MONITOR]   Setpoint: %.1f°C\n", gTargetTempC);
+    Serial.printf ("[MONITOR]   Mode    : %s\n",
+                   gPid.mode() == ThermostatMode::ECO ? "ECO" : "FAST");
+    Serial.printf ("[MONITOR]   Control : %s\n",   gHubClient.autoControl() ? "AUTO" : "MANUAL");
+    Serial.println("[MONITOR] ────────────────────────────────────────────");
 }
 
 // ── LEARN RESULT POST ─────────────────────────────────────────
