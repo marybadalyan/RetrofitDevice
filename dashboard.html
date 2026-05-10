@@ -715,6 +715,10 @@ async function stepTarget(delta){
 
 // ── Send IR command only (without changing target) ──
 async function sendIRCommand(cmd){
+    if(autoControl){
+        toast('Ignored — auto control is ON');
+        return;
+    }
     const r = await api('/api/command','POST',{command: cmd, ir_only: true});
     if(r){
         toast(cmd === 'temp_up' ? 'IR: Temp ▲' : 'IR: Temp ▼');

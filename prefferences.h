@@ -34,7 +34,8 @@ constexpr int         kHubPort = 5000;
 
 constexpr uint32_t kHubCommandPollIntervalMs = 100U;
 constexpr uint32_t kHubTelemetryIntervalMs   = 2000U;
-constexpr int      kHubHttpTimeoutMs         = 2000;
+constexpr int      kHubCommandTimeoutMs      = 500;   // command poll is a fast read — keep short to minimise IR stall window
+constexpr int      kHubTelemetryTimeoutMs    = 1000;  // telemetry writes to SQLite — needs headroom
 
 // ── NTP ───────────────────────────────────────────────────────
 constexpr bool        kEnableIpTimezoneLookup = true;

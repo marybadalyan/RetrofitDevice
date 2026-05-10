@@ -40,7 +40,14 @@ bool IRReceiver::poll(DecodedFrame& outFrame) {
 
     Command cmd = Command::NONE;
     if (!decodeCommand(cmdByte, cmd)) {
-        Serial.printf("[IR-RX] unknown cmd=0x%02X\n", cmdByte);
+        // Rate-limit to avoid flooding serial with noise from other remotes
+        static uint32_t lastUnknownMs = 0;
+        const uint32_t nowMs = millis();
+        if (nowMs - lastUnknownMs >= 2000) {
+            lastUnknownMs = nowMs;
+            Serial.printf("[IR-RX] unknown cmd=0x%02X (addr=0x%04X proto=%d)\n",
+                          cmdByte, static_cast<uint16_t>(d.address), static_cast<int>(d.protocol));
+        }
         return false;
     }
 

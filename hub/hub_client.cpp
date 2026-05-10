@@ -26,13 +26,26 @@ void HubClient::tick(uint32_t nowMs,
                      const WallClockSnapshot& wallNow,
                      bool wifiConnected) {
     if (!wifiConnected) {
+        if (hubReachable_) hubUnreachableSinceMs_ = nowMs;
         hubReachable_ = false;
-        return;
     }
 
+    // If hub has been unreachable for >15 s, disable auto control
+    if (!hubReachable_ && autoControl_) {
+        if (hubUnreachableSinceMs_ == 0) hubUnreachableSinceMs_ = nowMs;
+        if (nowMs - hubUnreachableSinceMs_ >= 15000) {
+            autoControl_ = false;
+            Serial.println("[HUB] Hub unreachable — auto control reset to OFF");
+        }
+    }
+
+    if (!wifiConnected) return;
+
+    // Only one blocking HTTP call per tick — prevents back-to-back 2 s stalls.
     if (nowMs - lastCommandPollMs_ >= kHubCommandPollIntervalMs) {
         lastCommandPollMs_ = nowMs;
         pollCommand(wallNow);
+        return;   // defer telemetry to the next tick
     }
 
     if (hasPendingTelemetry_ &&
@@ -55,8 +68,8 @@ bool HubClient::hubReachable() const {
 void HubClient::pollCommand(const WallClockSnapshot& wallNow) {
 #if HUBCLIENT_HAS_HTTP
     HTTPClient http;
-    http.setConnectTimeout(kHubHttpTimeoutMs);
-    http.setTimeout(kHubHttpTimeoutMs);
+    http.setConnectTimeout(kHubCommandTimeoutMs);
+    http.setTimeout(kHubCommandTimeoutMs);
 
     char url[128] = {0};
     snprintf(url, sizeof(url), "http://%s:%d/api/command/pending", kHubHost, kHubPort);
@@ -78,6 +91,7 @@ void HubClient::pollCommand(const WallClockSnapshot& wallNow) {
     }
 
     hubReachable_ = true;
+    hubUnreachableSinceMs_ = 0;
     const String raw = http.getString();
     http.end();
 
@@ -121,6 +135,18 @@ void HubClient::pollCommand(const WallClockSnapshot& wallNow) {
         return;
     }
 
+    // Auto-control: apply immediately so PID stops/starts without waiting for telemetry response
+    if (strcmp(cmdStr, "auto_off") == 0) {
+        autoControl_ = false;
+        Serial.println("[HUB] Auto control OFF");
+        return;
+    }
+    if (strcmp(cmdStr, "auto_on") == 0) {
+        autoControl_ = true;
+        Serial.println("[HUB] Auto control ON");
+        return;
+    }
+
     const Command cmd = parseCommandString(cmdStr);
     if (cmd == Command::NONE) {
         diag::log(DiagLevel::WARN, "HUB", "command poll: unrecognised command");
@@ -144,8 +170,8 @@ void HubClient::pollCommand(const WallClockSnapshot& wallNow) {
 void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
 #if HUBCLIENT_HAS_HTTP
     HTTPClient http;
-    http.setConnectTimeout(kHubHttpTimeoutMs);
-    http.setTimeout(kHubHttpTimeoutMs);
+    http.setConnectTimeout(kHubTelemetryTimeoutMs);
+    http.setTimeout(kHubTelemetryTimeoutMs);
 
     char url[128] = {0};
     snprintf(url, sizeof(url), "http://%s:%d/api/telemetry", kHubHost, kHubPort);
@@ -159,7 +185,7 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
     snprintf(body, sizeof(body),
         "{\"room_temp\":%.1f,\"target_temp\":%.1f,\"power\":%s,"
         "\"mode\":\"%s\",\"pid_p\":%.2f,\"pid_i\":%.3f,"
-        "\"pid_d\":%.2f,\"pid_steps\":%d,\"integral\":%.3f}",
+        "\"pid_d\":%.2f,\"pid_steps\":%d,\"integral\":%.3f,\"uptime_ms\":%lu}",
         pendingTelemetry_.roomTempC,
         pendingTelemetry_.targetTempC,
         pendingTelemetry_.powerOn ? "true" : "false",
@@ -168,7 +194,8 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
         pendingTelemetry_.pidI,
         pendingTelemetry_.pidD,
         static_cast<int>(pendingTelemetry_.pidSteps),
-        pendingTelemetry_.integral
+        pendingTelemetry_.integral,
+        static_cast<unsigned long>(pendingTelemetry_.uptimeMs)
     );
 
     const String envelope = crypto_.encryptEnvelope(String(body));

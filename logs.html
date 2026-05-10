@@ -54,6 +54,8 @@
   .pill.pill-state.active{background:var(--cold);border-color:var(--cold);color:#fff;}
   .pill.pill-mode.active{background:var(--green);border-color:var(--green);color:#fff;}
   .pill.pill-heater.active{background:#c97f3a;border-color:#c97f3a;color:#fff;}
+  .pill.pill-auto.active{background:var(--green);border-color:var(--green);color:#fff;}
+  .pill.pill-log.active{background:#4e988c;border-color:#4e988c;color:#fff;}
 
   .toolbar-right{display:flex;align-items:center;gap:10px;margin-left:auto;}
 
@@ -92,11 +94,14 @@
   .badge-scheduled{background:rgba(139,127,184,.1);color:#8b7fb8;border:1px solid rgba(139,127,184,.25);}
   .badge-state{background:rgba(110,168,200,.12);color:var(--cold);border:1px solid rgba(110,168,200,.3);}
   .badge-mode{background:rgba(74,140,92,.1);color:var(--green);border:1px solid rgba(74,140,92,.25);}
+  .badge-auto{background:rgba(74,140,92,.1);color:var(--green);border:1px solid rgba(74,140,92,.25);}
+  .badge-log{background:rgba(78,152,140,.1);color:#4e988c;border:1px solid rgba(78,152,140,.25);}
 
   .src-badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:0.58rem;letter-spacing:1.5px;text-transform:uppercase;background:var(--surface);border:1px solid var(--border);color:var(--muted);}
   .src-badge.src-dashboard{background:rgba(192,108,132,.06);color:var(--accent2);border-color:rgba(192,108,132,.2);}
   .src-badge.src-schedule{background:rgba(201,136,58,.07);color:var(--amber);border-color:rgba(201,136,58,.2);}
   .src-badge.src-device{background:rgba(110,168,200,.08);color:var(--cold);border-color:rgba(110,168,200,.25);}
+  .src-badge.src-auto{background:rgba(74,140,92,.08);color:var(--green);border-color:rgba(74,140,92,.2);}
 
   .status-dot{display:inline-flex;align-items:center;gap:5px;font-size:0.65rem;color:var(--muted);}
   .status-dot::before{content:'';width:6px;height:6px;border-radius:50%;flex-shrink:0;}
@@ -162,6 +167,8 @@
     <button class="pill pill-state" data-filter="state_change" onclick="setFilter('state_change',this)">State</button>
     <button class="pill pill-mode" data-filter="mode_change" onclick="setFilter('mode_change',this)">Mode</button>
     <button class="pill pill-heater" data-filter="heater" onclick="setFilter('heater',this)">Heater</button>
+    <button class="pill pill-auto" data-filter="auto" onclick="setFilter('auto',this)">Auto Control</button>
+    <button class="pill pill-log" data-filter="log" onclick="setFilter('log',this)">Log</button>
   </div>
 
   <div class="toolbar-right">
@@ -263,6 +270,8 @@ function formatEventBadge(event_type) {
     scheduled:    { cls: 'badge-scheduled', label: 'Scheduled',    icon: '◎' },
     state_change: { cls: 'badge-state',     label: 'State Change', icon: '◉' },
     mode_change:  { cls: 'badge-mode',      label: 'Mode Change',  icon: '◆' },
+    auto:         { cls: 'badge-auto',      label: 'Auto Control', icon: '⟳' },
+    log:          { cls: 'badge-log',       label: 'Log',          icon: '◌' },
   };
   const c = cfg[event_type] || { cls: '', label: event_type, icon: '○' };
   return `<span class="badge ${c.cls}">${c.icon} ${c.label}</span>`;
@@ -275,6 +284,7 @@ function formatSource(source) {
     device:    ['src-device',    'Device'],
     hub:       ['',              'Hub'],
     sent:      ['src-device',    'Sent to heater'],
+    auto:      ['src-auto',      'Auto (PID)'],
   };
   const [cls, label] = map[source] || ['', source];
   return `<span class="src-badge ${cls}">${label}</span>`;

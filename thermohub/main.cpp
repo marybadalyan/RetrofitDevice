@@ -593,8 +593,9 @@ void loop() {
         t.pidP        = gLastPidResult.p;
         t.pidI        = gLastPidResult.i;
         t.pidD        = gLastPidResult.d;
-        t.pidSteps    = gLastPidResult.steps;
+        t.pidSteps    = gHubClient.autoControl() ? gLastPidResult.steps : 0;
         t.integral    = gLastPidResult.i;
+        t.uptimeMs    = nowMs;
         gHubClient.submitTelemetry(t);
     }
 
@@ -641,6 +642,7 @@ void loop() {
                 gPid.reset(roomTempC);
                 onHeaterTurnedOn(nowMs, wallNow, roomTempC, gTargetTempC);
             } else {
+                gLastPidResult = {};
                 onHeaterTurnedOff(nowMs, wallNow, roomTempC);
             }
             break;
@@ -648,41 +650,35 @@ void loop() {
         case Command::TEMP_UP:
             if (!gHeaterPowered) { Serial.println("[CMD] Ignored TEMP_UP — heater is off"); break; }
             if (gHubClient.autoControl()) {
-                // PID mode: shift target, PID will handle IR
-                gTargetTempC += 0.5f;
-                Serial.printf("[CMD] PID target -> %.1f C\n", gTargetTempC);
-                gHubClient.forceTelemetry();
-            } else {
-                // Manual mode: send IR directly, but keep gTargetTempC in sync
-                gTargetTempC += 0.5f;
-#ifdef REAL_IR_TX
-                gIrSend.sendCommand(Command::TEMP_UP);
-#else
-                MockRoom::heaterSetpointC += 0.5f;
-#endif
-                Serial.printf("[CMD] Manual TEMP_UP — IR sent directly, target=%.1f\n", gTargetTempC);
-                gHubClient.forceTelemetry();
+                Serial.println("[CMD] IR ignored — auto control is ON");
+                break;
             }
+            // Manual mode: send IR directly, keep gTargetTempC in sync
+            gTargetTempC += 0.5f;
+#ifdef REAL_IR_TX
+            gIrSend.sendCommand(Command::TEMP_UP);
+#else
+            MockRoom::heaterSetpointC += 0.5f;
+#endif
+            Serial.printf("[CMD] Manual TEMP_UP — IR sent, target=%.1f\n", gTargetTempC);
+            gHubClient.forceTelemetry();
             break;
 
         case Command::TEMP_DOWN:
             if (!gHeaterPowered) { Serial.println("[CMD] Ignored TEMP_DOWN — heater is off"); break; }
             if (gHubClient.autoControl()) {
-                // PID mode: shift target, PID will handle IR
-                gTargetTempC -= 0.5f;
-                Serial.printf("[CMD] PID target -> %.1f C\n", gTargetTempC);
-                gHubClient.forceTelemetry();
-            } else {
-                // Manual mode: send IR directly, but keep gTargetTempC in sync
-                gTargetTempC -= 0.5f;
-#ifdef REAL_IR_TX
-                gIrSend.sendCommand(Command::TEMP_DOWN);
-#else
-                MockRoom::heaterSetpointC -= 0.5f;
-#endif
-                Serial.printf("[CMD] Manual TEMP_DOWN — IR sent directly, target=%.1f\n", gTargetTempC);
-                gHubClient.forceTelemetry();
+                Serial.println("[CMD] IR ignored — auto control is ON");
+                break;
             }
+            // Manual mode: send IR directly, keep gTargetTempC in sync
+            gTargetTempC -= 0.5f;
+#ifdef REAL_IR_TX
+            gIrSend.sendCommand(Command::TEMP_DOWN);
+#else
+            MockRoom::heaterSetpointC -= 0.5f;
+#endif
+            Serial.printf("[CMD] Manual TEMP_DOWN — IR sent, target=%.1f\n", gTargetTempC);
+            gHubClient.forceTelemetry();
             break;
 
         case Command::LEARN_ON_OFF:

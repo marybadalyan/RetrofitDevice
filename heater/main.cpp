@@ -44,10 +44,13 @@ void updateDisplay() {
 
     gDisplay.setTextSize(1);
     gDisplay.setCursor(0, 20);
-    gDisplay.printf("Setpoint: %.1fC", gSetpointC);
+    gDisplay.print("SP: ");
+    gDisplay.print(gSetpointC, 1);
+    gDisplay.print("C");
 
     gDisplay.setCursor(0, 32);
-    gDisplay.printf("Last IR: %s", commandToString(gLastCmd));
+    gDisplay.print("IR: ");
+    gDisplay.print(commandToString(gLastCmd));
 
     gDisplay.setCursor(0, 44);
 #ifdef REAL_IR_RX
@@ -143,6 +146,9 @@ void setup() {
 #endif
 
     Serial.println("[HEATER] Ready.");
+#ifdef REAL_OLED
+    updateDisplay();
+#endif
 }
 
 // ── LOOP ─────────────────────────────────────────────────────

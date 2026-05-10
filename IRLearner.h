@@ -51,6 +51,13 @@ public:
 
 private:
     static const char* nvsPrefix(Command cmd);   // e.g. "on", "up", "dn"
+    static int         cacheIndex(Command cmd);  // 0=ON_OFF 1=TEMP_UP 2=TEMP_DOWN, -1=none
+
+    struct CachedCode {
+        LearnedCode code{};
+        bool        valid = false;
+    };
+    CachedCode cache_[3]{};          // loaded once from NVS in beginSend()
 
     LearnedCode lastCaptured_{};
     bool        hasLastCaptured_ = false;

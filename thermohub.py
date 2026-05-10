@@ -311,6 +311,7 @@ class TelemetryIn(BaseModel):
     pid_d:       Optional[float] = None
     pid_steps:   Optional[int]   = None
     integral:    Optional[float] = None
+    uptime_ms:   Optional[int]   = None
 
 class CommandIn(BaseModel):
     command: str   # 'on' | 'off' | 'temp_up' | 'temp_down'
@@ -363,6 +364,11 @@ device_state = {
 # Set to True when the user explicitly disables PID via the dashboard.
 # Prevents the schedule from re-enabling it until the user turns it on again.
 user_disabled_auto_control = False
+
+# Tracks the last uptime the device reported — used to detect reboots
+# and ensure the boot-time auto-control reset fires only once per session.
+_last_device_uptime_ms: int = 0
+_device_boot_reset_done: bool = False
 
 # ── IR LEARN STATE ─────────────────────────────────────────────
 # Tracks the last learn operation for the dashboard to poll.
@@ -520,14 +526,38 @@ async def post_telemetry(request: Request):
     target_temp = None if (data.target_temp is None or data.target_temp <= NO_SENSOR) else data.target_temp
 
     # Update live state — only overwrite if real values received
-    if room_temp   is not None: device_state["room_temp"]   = room_temp
-    if target_temp is not None: device_state["target_temp"] = target_temp
+    if room_temp is not None: device_state["room_temp"] = room_temp
+    # Don't let stale ESP32 telemetry overwrite a recently set manual target.
+    # Give the queued command 10 s to reach the device before accepting its echo back.
+    if target_temp is not None:
+        secs_since_manual = time.time() - last_manual_temp_ts
+        if secs_since_manual > 10:
+            device_state["target_temp"] = target_temp
     if data.power  is not None: device_state["power"]       = data.power
     if data.mode   is not None: device_state["mode"]        = data.mode
     device_state["pid"] = {
         "p": data.pid_p, "i": data.pid_i,
         "d": data.pid_d, "steps": data.pid_steps
     }
+    # Detect device reboot and reset auto control exactly once per boot session.
+    # A reboot is detected when uptime_ms goes backward (wraps back to a small value).
+    global _last_device_uptime_ms, _device_boot_reset_done
+    if data.uptime_ms is not None:
+        rebooted = data.uptime_ms < _last_device_uptime_ms - 5000
+        if rebooted:
+            _device_boot_reset_done = False  # new boot session — allow one reset
+        _last_device_uptime_ms = data.uptime_ms
+
+        if not _device_boot_reset_done:
+            if device_state["auto_control"]:
+                device_state["auto_control"] = False
+                with get_db() as conn:
+                    conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('auto_control', ?)",
+                                 (json.dumps(False),))
+                    conn.commit()
+                log.info("Device rebooted (uptime=%dms) — auto control reset to OFF", data.uptime_ms)
+            _device_boot_reset_done = True  # done for this boot session
+
     device_state["last_seen"] = now
 
     # Only persist rows that have real sensor data — keeps history clean
@@ -540,6 +570,15 @@ async def post_telemetry(request: Request):
             """, (now, room_temp, target_temp,
                   int(data.power) if data.power is not None else None,
                   data.mode, data.pid_p, data.pid_i, data.pid_d, data.pid_steps, data.integral))
+            # Log each PID-driven IR step so they appear in the event log
+            pid_steps = data.pid_steps or 0
+            if pid_steps != 0 and device_state["auto_control"]:
+                pid_cmd = "ir_temp_up" if pid_steps > 0 else "ir_temp_down"
+                for _ in range(abs(pid_steps)):
+                    conn.execute(
+                        "INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
+                        (now, pid_cmd, "auto", "auto")
+                    )
             conn.commit()
 
     # Check schedule for current slot
@@ -568,16 +607,6 @@ async def post_telemetry(request: Request):
                 sched_temp = action["temp"]
                 need_update = target_temp is None or abs(sched_temp - target_temp) >= 0.5
 
-                # Auto-enable PID when a temp schedule fires — but not if the user explicitly disabled it
-                if not device_state["auto_control"] and not user_disabled_auto_control:
-                    device_state["auto_control"] = True
-                    with get_db() as conn:
-                        conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('auto_control', ?)",
-                                     (json.dumps(True),))
-                        conn.commit()
-                    response["auto_control"] = True
-                    log.info("Schedule auto-enabled PID control")
-
                 # Turn heater on if it's off
                 if not device_state["power"]:
                     device_state["power"] = True
@@ -587,7 +616,7 @@ async def post_telemetry(request: Request):
                         conn.commit()
                     log.info("Schedule turned heater ON")
 
-                if need_update:
+                if need_update and device_state["auto_control"]:
                     response["scheduled_target"] = sched_temp
                     device_state["target_temp"] = sched_temp
                     with get_db() as conn:
@@ -648,8 +677,20 @@ def set_auto_control(body: AutoControlIn):
     with get_db() as conn:
         conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('auto_control', ?)",
                      (json.dumps(body.enabled),))
+        # auto_on/auto_off is pushed to the ESP32 via the telemetry response (auto_control field).
+        # Use source='log' so it appears in the event log but is not re-sent as a command.
         conn.execute("INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
-                     (datetime.utcnow().isoformat(), cmd, "dashboard", "dashboard"))
+                     (datetime.utcnow().isoformat(), cmd, "log", "dashboard"))
+        if not body.enabled:
+            # Wipe any pending temp_up/temp_down commands still in the queue.
+            # Without this, commands queued while PID was on get picked up after
+            # auto_control flips false and fire IR in manual mode unexpectedly.
+            conn.execute(
+                "UPDATE commands SET source='sent' "
+                "WHERE source IN ('dashboard','schedule') "
+                "AND command IN ('temp_up','temp_down') "
+                "AND ts > datetime('now', '-30 seconds')"
+            )
         conn.commit()
     log.info("Auto control %s", "enabled" if body.enabled else "disabled")
     return {"status": "ok", "auto_control": body.enabled}
@@ -726,9 +767,12 @@ def post_command(body: CommandIn):
             conn.commit()
 
     logged_cmd = ("ir_" + body.command) if body.ir_only and body.command in ("temp_up", "temp_down") else body.command
+    # Target-temp adjustments from the dashboard are hub-level only — don't send IR.
+    # Use source='log' so the ESP32 never picks them up via the command queue.
+    cmd_source = 'log' if (body.command in ("temp_up", "temp_down") and not body.ir_only) else 'dashboard'
     with get_db() as conn:
-        conn.execute("INSERT INTO commands (ts, command, source, origin) VALUES (?,?,'dashboard','dashboard')",
-                     (datetime.utcnow().isoformat(), logged_cmd))
+        conn.execute("INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
+                     (datetime.utcnow().isoformat(), logged_cmd, cmd_source, 'dashboard'))
         conn.commit()
 
     log.info("Command queued: %s", body.command)
@@ -1053,12 +1097,26 @@ def get_logs(limit: int = 300, hours: int = 72):
     for r in cmd_rows:
         src    = r["source"]
         origin = r["origin"]
+        if src == "sent":
+            status = "delivered"
+        elif src in ("auto", "log"):
+            status = "ok"
+        else:
+            status = "queued"
+        if origin == "schedule":
+            event_type = "schedule"
+        elif origin == "auto":
+            event_type = "auto"
+        elif src == "log":
+            event_type = "log"
+        else:
+            event_type = "command"
         logs.append({
             "ts": r["ts"],
-            "event_type": "schedule" if origin == "schedule" else "command",
+            "event_type": event_type,
             "details": r["command"],
-            "source": "device" if src == "sent" else src,
-            "status": "delivered" if src == "sent" else "queued",
+            "source": "device" if src == "sent" else (origin if src == "log" else src),
+            "status": status,
         })
 
     prev_power, prev_mode = None, None
@@ -1195,8 +1253,10 @@ def save_config(body: ConfigIn):
             old_mode = json.loads(row["value"]).upper() if row else None
             new_mode = str(data['pid_mode']).upper()
             if old_mode != new_mode:
+                # Mode changes are pushed to the ESP32 via the telemetry response (pid_mode field).
+                # Use source='log' so it appears in the event log but is not re-sent as a command.
                 conn.execute("INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
-                             (datetime.utcnow().isoformat(), f"mode_{new_mode.lower()}", "dashboard", "dashboard"))
+                             (datetime.utcnow().isoformat(), f"mode_{new_mode.lower()}", "log", "dashboard"))
         conn.executemany("INSERT OR REPLACE INTO config (key, value) VALUES (?,?)",
                          [(k, json.dumps(v)) for k, v in data.items()])
         conn.commit()

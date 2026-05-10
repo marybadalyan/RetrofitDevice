@@ -189,8 +189,8 @@ bool HubConnectivity::lookupTimezoneRuleFromIp(char* outRule, size_t outRuleSize
     if (!outRule || outRuleSize == 0) return false;
 
     HTTPClient http;
-    http.setConnectTimeout(kHubHttpTimeoutMs);
-    http.setTimeout(kHubHttpTimeoutMs);
+    http.setConnectTimeout(kHubCommandTimeoutMs);
+    http.setTimeout(kHubCommandTimeoutMs);
 
     if (!http.begin(kIpTimezoneUrl)) {
         Serial.println("[TIME] IP timezone lookup begin() failed");

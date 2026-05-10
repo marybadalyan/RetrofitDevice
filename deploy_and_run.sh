@@ -55,6 +55,7 @@ if [ "$CONFIRM" = "s" ] || [ "$CONFIRM" = "S" ]; then
 fi
 echo ""
 
+
 # ── Firmware uploads ────────────────────────────────────────────────────────
 
 echo "==> [1/2] Uploading heater firmware  (port: $HEATER_PORT)..."
@@ -75,7 +76,8 @@ echo ""
 echo "==> Opening heater serial monitor..."
 osascript <<APPLESCRIPT
 tell application "Terminal"
-    do script "printf '\\033]0;Heater Monitor\\007' && $PIO device monitor --port $HEATER_PORT --baud 115200"
+    set heaterWin to do script "$PIO device monitor --port $HEATER_PORT --baud 115200"
+    set custom title of heaterWin to "Heater Monitor"
     activate
 end tell
 APPLESCRIPT
@@ -85,12 +87,42 @@ sleep 0.5
 echo "==> Opening thermoDevice serial monitor..."
 osascript <<APPLESCRIPT
 tell application "Terminal"
-    do script "printf '\\033]0;ThermoDevice Monitor\\007' && $PIO device monitor --port $THERMO_PORT --baud 115200"
+    set thermoWin to do script "$PIO device monitor --port $THERMO_PORT --baud 115200"
+    set custom title of thermoWin to "ThermoDevice Monitor"
     activate
 end tell
 APPLESCRIPT
 
 sleep 0.5
+
+echo "==> Opening ngrok tunnel (nontheoretic-alyce-noncommunistic.ngrok-free.dev → :5000)..."
+osascript <<APPLESCRIPT
+tell application "Terminal"
+    set ngrokWin to do script "/opt/homebrew/bin/ngrok http --url=nontheoretic-alyce-noncommunistic.ngrok-free.dev 5000"
+    set custom title of ngrokWin to "Web Tunnel (ngrok)"
+    activate
+end tell
+APPLESCRIPT
+
+sleep 0.5
+
+# ── Cleanup: close monitor windows when this script exits ───────────────────
+
+cleanup() {
+    echo ""
+    echo "==> Closing monitor terminals..."
+    osascript <<'APPLESCRIPT'
+    tell application "Terminal"
+        set titles to {"Heater Monitor", "ThermoDevice Monitor", "Web Tunnel (ngrok)"}
+        repeat with w in (get windows)
+            if (custom title of w) is in titles then
+                close w
+            end if
+        end repeat
+    end tell
+APPLESCRIPT
+}
+trap cleanup EXIT
 
 # ── Hub server (runs in this terminal) ───────────────────────────────────────
 

@@ -24,6 +24,15 @@ const char* IRLearner::nvsPrefix(Command cmd) {
     }
 }
 
+int IRLearner::cacheIndex(Command cmd) {
+    switch (cmd) {
+        case Command::ON_OFF:    return 0;
+        case Command::TEMP_UP:   return 1;
+        case Command::TEMP_DOWN: return 2;
+        default:                 return -1;
+    }
+}
+
 #if IRLEARNER_HW
 static void buildKey(char* buf, size_t bufLen,
                      const char* prefix, const char* suffix) {
@@ -101,6 +110,16 @@ void IRLearner::beginSend() {
     IrReceiver.stop();   // keep it paused until beginListen() is called
     Serial.printf("[LEARN] IR hardware ready — TX GPIO %d  RX GPIO %d\n",
                   kIrTxPin, kIrRxPin);
+
+    // Pre-load learned codes into RAM so sendCommand() never hits NVS flash.
+    const Command cmds[] = { Command::ON_OFF, Command::TEMP_UP, Command::TEMP_DOWN };
+    for (const Command c : cmds) {
+        const char* pfx = nvsPrefix(c);
+        const int   idx = cacheIndex(c);
+        if (pfx && idx >= 0 && loadCode(pfx, cache_[idx].code)) {
+            cache_[idx].valid = true;
+        }
+    }
 #endif
 }
 
@@ -170,6 +189,13 @@ LearnPollResult IRLearner::poll(Command targetCmd) {
         Serial.printf("[LEARN] Saved to NVS under prefix '%s'\n", pfx);
     }
 
+    // Update RAM cache so subsequent sendCommand() calls need no NVS read.
+    const int idx = cacheIndex(targetCmd);
+    if (idx >= 0) {
+        cache_[idx].code  = code;
+        cache_[idx].valid = true;
+    }
+
     return LearnPollResult::OK;
 #else
     (void)targetCmd;
@@ -178,31 +204,16 @@ LearnPollResult IRLearner::poll(Command targetCmd) {
 }
 
 bool IRLearner::hasLearned(Command cmd) const {
-#if IRLEARNER_HW
-    const char* pfx = nvsPrefix(cmd);
-    if (!pfx) return false;
-    Preferences prefs;
-    prefs.begin("ir-learn", true);
-    char key[16];
-    buildKey(key, sizeof(key), pfx, "prot");
-    const bool exists = prefs.isKey(key);
-    prefs.end();
-    return exists;
-#else
-    (void)cmd;
-    return false;
-#endif
+    const int idx = cacheIndex(cmd);
+    if (idx < 0) return false;
+    return cache_[idx].valid;
 }
 
 bool IRLearner::getCode(Command cmd, LearnedCode& out) const {
-#if IRLEARNER_HW
-    const char* pfx = nvsPrefix(cmd);
-    if (!pfx) return false;
-    return loadCode(pfx, out);
-#else
-    (void)cmd; (void)out;
-    return false;
-#endif
+    const int idx = cacheIndex(cmd);
+    if (idx < 0 || !cache_[idx].valid) return false;
+    out = cache_[idx].code;
+    return true;
 }
 
 void IRLearner::clearAll() {
@@ -211,6 +222,8 @@ void IRLearner::clearAll() {
     for (Command c : cmds) {
         const char* pfx = nvsPrefix(c);
         if (pfx) clearPrefix(pfx);
+        const int idx = cacheIndex(c);
+        if (idx >= 0) cache_[idx].valid = false;
     }
     Serial.println("[LEARN] All learned codes cleared from NVS.");
 #endif

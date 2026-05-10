@@ -15,15 +15,16 @@
 class HubClient {
 public:
     struct Telemetry {
-        float  roomTempC    = 0.0f;
-        float  targetTempC  = 0.0f;
-        bool   powerOn      = false;
-        float  pidP         = 0.0f;
-        float  pidI         = 0.0f;
-        float  pidD         = 0.0f;
-        int8_t pidSteps     = 0;
-        float  integral     = 0.0f;
+        float    roomTempC  = 0.0f;
+        float    targetTempC= 0.0f;
+        bool     powerOn    = false;
+        float    pidP       = 0.0f;
+        float    pidI       = 0.0f;
+        float    pidD       = 0.0f;
+        int8_t   pidSteps   = 0;
+        float    integral   = 0.0f;
         const char* mode    = "FAST";
+        uint32_t uptimeMs   = 0;
     };
 
     // Custom IR command data (for custom button sending)
@@ -85,10 +86,11 @@ private:
     bool         hasPendingTelemetry_ = false;
     bool         hubReachable_        = false;
 
-    uint32_t lastCommandPollMs_   = 0;
-    uint32_t lastTelemetryPostMs_ = 0;
-    float    scheduledTargetTemp_ = 0.0f;
-    char     pendingMode_[8]      = {};
-    bool     autoControl_         = false;
+    uint32_t lastCommandPollMs_     = 0;
+    uint32_t lastTelemetryPostMs_   = 0;
+    uint32_t hubUnreachableSinceMs_ = 0;
+    float    scheduledTargetTemp_   = 0.0f;
+    char     pendingMode_[8]        = {};
+    bool     autoControl_           = false;
     PendingCustomIr pendingCustomIr_{};
 };
