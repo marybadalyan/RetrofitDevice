@@ -724,6 +724,25 @@ async function sendIRCommand(cmd){
 }
 
 // ── live chart ──
+async function seedLiveChart(){
+  const d = await api('/api/history?hours=2');
+  if(!d||!d.readings) return;
+  const readings = d.readings.filter(r=>r.room_temp!==null);
+  if(!readings.length) return;
+  readings.forEach(r=>{
+    const t=r.ts.slice(11,16);
+    if(liveData.labels.at(-1)===t) return;
+    liveData.labels.push(t);
+    liveData.room.push(r.room_temp);
+    liveData.target.push(r.target_temp);
+  });
+  while(liveData.labels.length>50){liveData.labels.shift();liveData.room.shift();liveData.target.shift();}
+  liveChart.data.labels=[...liveData.labels];
+  liveChart.data.datasets[0].data=[...liveData.room];
+  liveChart.data.datasets[1].data=[...liveData.target];
+  liveChart.update('none');
+}
+
 function initLiveChart(){
   const ctx=document.getElementById('liveChart').getContext('2d');
   const base={borderWidth:2,pointRadius:2,tension:0.4};
@@ -963,6 +982,7 @@ async function sendTestIR(cmd) {
 
 // ── boot ──
 initLiveChart();
+seedLiveChart();
 loadSched();
 loadMode();
 poll();

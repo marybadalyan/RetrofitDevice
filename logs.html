@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ThermoHub — Event Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#f5f0eb;--surface:#faf7f4;--card:#ffffff;--border:#e8e0d6;
+    --text:#2a1f14;--muted:#9c8b7a;--accent:#c06c84;--accent2:#d4899a;
+    --green:#4a8c5c;--cold:#6ea8c8;--amber:#c9883a;
+    --serif:'DM Serif Display',serif;--mono:'DM Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--mono);min-height:100vh;overflow-x:hidden;}
+  body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");pointer-events:none;z-index:999;}
+
+  /* ── HEADER ── */
+  header{padding:20px 32px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:100;}
+  .logo{font-family:var(--serif);font-size:1.4rem;letter-spacing:-0.5px;display:flex;align-items:baseline;gap:8px;}
+  .logo span{color:var(--accent);font-style:italic;}
+  .logo-sub{font-size:0.68rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-family:var(--mono);margin-left:4px;}
+  .header-right{display:flex;align-items:center;gap:16px;}
+  .status-pill{display:flex;align-items:center;gap:8px;font-size:0.68rem;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background 0.4s;flex-shrink:0;}
+  .dot.online{background:var(--green);box-shadow:0 0 6px var(--green);animation:pdot 2s infinite;}
+  @keyframes pdot{0%,100%{opacity:1}50%{opacity:0.5}}
+  .back-btn{display:flex;align-items:center;gap:6px;font-size:0.68rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);text-decoration:none;padding:7px 14px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;transition:all .2s;font-family:var(--mono);}
+  .back-btn:hover{color:var(--text);border-color:var(--text);}
+  @media(max-width:600px){header{padding:14px 16px;}.logo-sub{display:none;}.logo{font-size:1.1rem;}}
+
+  /* ── TOOLBAR ── */
+  .toolbar{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 32px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:65px;z-index:99;}
+  @media(max-width:600px){.toolbar{padding:10px 14px;top:57px;gap:8px;}}
+
+  .search-wrap{position:relative;flex:1;min-width:160px;max-width:280px;}
+  .search-wrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--muted);pointer-events:none;}
+  #searchInput{width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 10px 8px 32px;font-family:var(--mono);font-size:0.75rem;color:var(--text);outline:none;transition:border-color .2s;}
+  #searchInput:focus{border-color:var(--accent);}
+  #searchInput::placeholder{color:var(--muted);}
+
+  .f-select{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 11px;font-family:var(--mono);font-size:0.72rem;color:var(--text);outline:none;cursor:pointer;transition:border-color .2s;}
+  .f-select:focus{border-color:var(--accent);}
+
+  .filter-pills{display:flex;gap:6px;flex-wrap:wrap;}
+  .pill{padding:6px 13px;border-radius:20px;font-size:0.65rem;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--muted);transition:all .18s;font-family:var(--mono);}
+  .pill:hover{border-color:var(--text);color:var(--text);}
+  .pill.active{background:var(--text);border-color:var(--text);color:var(--bg);}
+  .pill.pill-cmd.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .pill.pill-sched.active{background:var(--amber);border-color:var(--amber);color:#fff;}
+  .pill.pill-scheduled.active{background:#8b7fb8;border-color:#8b7fb8;color:#fff;}
+  .pill.pill-state.active{background:var(--cold);border-color:var(--cold);color:#fff;}
+  .pill.pill-mode.active{background:var(--green);border-color:var(--green);color:#fff;}
+  .pill.pill-heater.active{background:#c97f3a;border-color:#c97f3a;color:#fff;}
+
+  .toolbar-right{display:flex;align-items:center;gap:10px;margin-left:auto;}
+
+  .refresh-toggle{display:flex;align-items:center;gap:7px;font-size:0.65rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none;}
+  .refresh-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background .3s;}
+  .refresh-dot.active{background:var(--green);animation:pdot 1.5s infinite;}
+
+  .export-btn{display:flex;align-items:center;gap:5px;font-size:0.65rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--mono);transition:all .2s;}
+  .export-btn:hover{color:var(--text);border-color:var(--text);}
+
+  /* ── SUMMARY BAR ── */
+  .summary{padding:10px 32px;display:flex;align-items:center;justify-content:space-between;font-size:0.65rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);}
+  @media(max-width:600px){.summary{padding:8px 14px;}}
+  .summary-count{display:flex;align-items:center;gap:6px;}
+  .count-badge{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2px 9px;font-size:0.63rem;}
+
+  /* ── TABLE ── */
+  .table-wrap{padding:0 32px 40px;overflow-x:auto;}
+  @media(max-width:600px){.table-wrap{padding:0 0 40px;}}
+
+  .log-table{width:100%;border-collapse:collapse;font-size:0.78rem;}
+  .log-table thead th{padding:11px 14px;text-align:left;font-size:0.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);border-bottom:2px solid var(--border);background:var(--bg);white-space:nowrap;position:sticky;top:0;}
+  .log-table tbody tr{border-bottom:1px solid var(--border);transition:background .15s;}
+  .log-table tbody tr:hover{background:var(--surface);}
+  .log-table tbody tr:last-child{border-bottom:none;}
+  .log-table td{padding:11px 14px;vertical-align:middle;}
+  .log-table td.ts-cell{white-space:nowrap;color:var(--muted);font-size:0.72rem;}
+  .ts-date{display:block;color:var(--muted);font-size:0.62rem;margin-top:2px;}
+  .log-table td.details-cell{max-width:260px;}
+
+  /* ── BADGES ── */
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:0.6rem;letter-spacing:1.5px;text-transform:uppercase;font-weight:500;white-space:nowrap;}
+  .badge svg{width:8px;height:8px;flex-shrink:0;}
+  .badge-command{background:rgba(192,108,132,.1);color:var(--accent);border:1px solid rgba(192,108,132,.25);}
+  .badge-schedule{background:rgba(201,136,58,.1);color:var(--amber);border:1px solid rgba(201,136,58,.25);}
+  .badge-scheduled{background:rgba(139,127,184,.1);color:#8b7fb8;border:1px solid rgba(139,127,184,.25);}
+  .badge-state{background:rgba(110,168,200,.12);color:var(--cold);border:1px solid rgba(110,168,200,.3);}
+  .badge-mode{background:rgba(74,140,92,.1);color:var(--green);border:1px solid rgba(74,140,92,.25);}
+
+  .src-badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:0.58rem;letter-spacing:1.5px;text-transform:uppercase;background:var(--surface);border:1px solid var(--border);color:var(--muted);}
+  .src-badge.src-dashboard{background:rgba(192,108,132,.06);color:var(--accent2);border-color:rgba(192,108,132,.2);}
+  .src-badge.src-schedule{background:rgba(201,136,58,.07);color:var(--amber);border-color:rgba(201,136,58,.2);}
+  .src-badge.src-device{background:rgba(110,168,200,.08);color:var(--cold);border-color:rgba(110,168,200,.25);}
+
+  .status-dot{display:inline-flex;align-items:center;gap:5px;font-size:0.65rem;color:var(--muted);}
+  .status-dot::before{content:'';width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .status-dot.delivered::before{background:var(--green);}
+  .status-dot.queued::before{background:var(--amber);}
+  .status-dot.ok::before{background:var(--cold);}
+
+  /* ── EMPTY STATE ── */
+  .empty-state{padding:80px 32px;text-align:center;color:var(--muted);}
+  .empty-icon{font-size:2.5rem;margin-bottom:16px;opacity:.4;}
+  .empty-title{font-family:var(--serif);font-size:1.3rem;color:var(--text);margin-bottom:8px;opacity:.5;}
+  .empty-sub{font-size:0.72rem;line-height:1.6;}
+
+  /* ── SKELETON ── */
+  .skel{animation:skel 1.4s ease infinite;}
+  @keyframes skel{0%,100%{opacity:.4}50%{opacity:.9}}
+  .skel-row td{padding:12px 14px;}
+  .skel-bar{height:12px;border-radius:4px;background:var(--border);}
+
+  /* ── TOAST ── */
+  .toast{position:fixed;bottom:22px;right:22px;background:var(--text);color:var(--bg);padding:11px 18px;border-radius:10px;font-size:0.77rem;opacity:0;transform:translateY(8px);transition:all .3s;z-index:1001;pointer-events:none;}
+  .toast.show{opacity:1;transform:translateY(0);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    thermo<span>hub</span>
+    <span class="logo-sub">/ event log</span>
+  </div>
+  <div class="header-right">
+    <div class="status-pill">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">connecting</span>
+    </div>
+    <a class="back-btn" id="backBtn" href="#">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      Dashboard
+    </a>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="search-wrap">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input id="searchInput" placeholder="Search events…" oninput="applyFilters()">
+  </div>
+
+  <select class="f-select" id="timeRange" onchange="loadLogs()">
+    <option value="1">Last 1 hour</option>
+    <option value="6">Last 6 hours</option>
+    <option value="24" selected>Last 24 hours</option>
+    <option value="48">Last 48 hours</option>
+    <option value="168">Last 7 days</option>
+  </select>
+
+  <div class="filter-pills">
+    <button class="pill active" data-filter="all" onclick="setFilter('all',this)">All</button>
+    <button class="pill pill-cmd" data-filter="command" onclick="setFilter('command',this)">Commands</button>
+    <button class="pill pill-sched" data-filter="schedule" onclick="setFilter('schedule',this)">Schedule</button>
+    <button class="pill pill-scheduled" data-filter="scheduled" onclick="setFilter('scheduled',this)">Scheduled</button>
+    <button class="pill pill-state" data-filter="state_change" onclick="setFilter('state_change',this)">State</button>
+    <button class="pill pill-mode" data-filter="mode_change" onclick="setFilter('mode_change',this)">Mode</button>
+    <button class="pill pill-heater" data-filter="heater" onclick="setFilter('heater',this)">Heater</button>
+  </div>
+
+  <div class="toolbar-right">
+    <div class="refresh-toggle" onclick="toggleAutoRefresh()" title="Toggle auto-refresh">
+      <div class="refresh-dot" id="refreshDot"></div>
+      <span id="refreshLabel">Auto</span>
+    </div>
+    <button class="export-btn" onclick="exportCSV()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      CSV
+    </button>
+  </div>
+</div>
+
+<div class="summary">
+  <div class="summary-count">
+    <span id="countText">— events</span>
+    <span class="count-badge" id="totalBadge" style="display:none"></span>
+  </div>
+  <span id="lastUpdated"></span>
+</div>
+
+<div class="table-wrap">
+  <table class="log-table">
+    <thead>
+      <tr>
+        <th style="width:160px">Time</th>
+        <th style="width:130px">Event</th>
+        <th>Details</th>
+        <th style="width:110px">Source</th>
+        <th style="width:100px">Status</th>
+      </tr>
+    </thead>
+    <tbody id="logBody">
+      <!-- skeleton rows while loading -->
+      <tr class="skel skel-row"><td><div class="skel-bar" style="width:110px"></div></td><td><div class="skel-bar" style="width:80px"></div></td><td><div class="skel-bar" style="width:200px"></div></td><td><div class="skel-bar" style="width:70px"></div></td><td><div class="skel-bar" style="width:60px"></div></td></tr>
+      <tr class="skel skel-row"><td><div class="skel-bar" style="width:110px"></div></td><td><div class="skel-bar" style="width:90px"></div></td><td><div class="skel-bar" style="width:160px"></div></td><td><div class="skel-bar" style="width:80px"></div></td><td><div class="skel-bar" style="width:55px"></div></td></tr>
+      <tr class="skel skel-row"><td><div class="skel-bar" style="width:110px"></div></td><td><div class="skel-bar" style="width:75px"></div></td><td><div class="skel-bar" style="width:220px"></div></td><td><div class="skel-bar" style="width:65px"></div></td><td><div class="skel-bar" style="width:60px"></div></td></tr>
+      <tr class="skel skel-row"><td><div class="skel-bar" style="width:110px"></div></td><td><div class="skel-bar" style="width:100px"></div></td><td><div class="skel-bar" style="width:180px"></div></td><td><div class="skel-bar" style="width:75px"></div></td><td><div class="skel-bar" style="width:50px"></div></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const HUB = '';
+
+// ── State ──────────────────────────────────────────────────────
+let allLogs = [];
+let activeFilter = 'all';
+let autoRefresh = true;
+let refreshTimer = null;
+const REFRESH_MS = 5000;
+
+// ── Back button: strip /logs from current path ─────────────────
+(function () {
+  const path = window.location.pathname.replace(/\/logs\/?$/, '');
+  document.getElementById('backBtn').href = path || '/';
+})();
+
+// ── Formatting helpers ──────────────────────────────────────────
+const COMMAND_LABELS = {
+  on:             'Power ON',
+  off:            'Power OFF',
+  temp_up:        'Target temperature +0.5°C',
+  temp_down:      'Target temperature −0.5°C',
+  ir_temp_up:     'Temperature +0.5°C',
+  ir_temp_down:   'Temperature −0.5°C',
+  learn_on_off:   'Learn: On/Off button',
+  learn_temp_up:  'Learn: Temp Up button',
+  learn_temp_down:'Learn: Temp Down button',
+  learn_clear:    'Learn: Clear all codes',
+  learn_custom:   'Learn: Custom button',
+  power_on:       'Heater turned ON',
+  power_off:      'Heater turned OFF',
+  mode_fast:      'Mode switched → FAST',
+  mode_eco:       'Mode switched → ECO',
+  auto_on:        'Auto control enabled',
+  auto_off:       'Auto control disabled',
+};
+
+function formatDetails(event_type, details) {
+  if (COMMAND_LABELS[details]) return COMMAND_LABELS[details];
+  if (details && details.startsWith('custom_')) {
+    const id = details.split('_')[1];
+    return `Custom IR button #${id}`;
+  }
+  if (details && details.startsWith('temp:')) {
+    return `Target ${details.slice(5)}°C`;
+  }
+  return details || '—';
+}
+
+function formatEventBadge(event_type) {
+  const cfg = {
+    command:      { cls: 'badge-command',   label: 'Command',      icon: '◈' },
+    schedule:     { cls: 'badge-schedule',  label: 'Schedule',     icon: '◷' },
+    scheduled:    { cls: 'badge-scheduled', label: 'Scheduled',    icon: '◎' },
+    state_change: { cls: 'badge-state',     label: 'State Change', icon: '◉' },
+    mode_change:  { cls: 'badge-mode',      label: 'Mode Change',  icon: '◆' },
+  };
+  const c = cfg[event_type] || { cls: '', label: event_type, icon: '○' };
+  return `<span class="badge ${c.cls}">${c.icon} ${c.label}</span>`;
+}
+
+function formatSource(source) {
+  const map = {
+    dashboard: ['src-dashboard', 'Dashboard'],
+    schedule:  ['src-schedule',  'Schedule'],
+    device:    ['src-device',    'Device'],
+    hub:       ['',              'Hub'],
+    sent:      ['src-device',    'Sent to heater'],
+  };
+  const [cls, label] = map[source] || ['', source];
+  return `<span class="src-badge ${cls}">${label}</span>`;
+}
+
+function formatStatus(status) {
+  return `<span class="status-dot ${status}">${status}</span>`;
+}
+
+function formatTimestamp(ts) {
+  const d = new Date(ts + (ts.endsWith('Z') ? '' : 'Z'));
+  if (isNaN(d)) return ts;
+  const time = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  const date = d.toLocaleDateString([], {weekday:'short', day:'2-digit', month:'short'});
+  return `<span>${time}</span><span class="ts-date">${date}</span>`;
+}
+
+// ── Heater view ────────────────────────────────────────────────
+const HEATER_ACTION_LABELS = {
+  on:          { icon: '▶', label: 'Turned ON',       cls: 'badge-state'   },
+  off:         { icon: '■', label: 'Turned OFF',      cls: 'badge-command' },
+  temp_up:     { icon: '↑', label: 'Temperature UP',  cls: 'badge-schedule'},
+  temp_down:   { icon: '↓', label: 'Temperature DOWN',cls: 'badge-schedule'},
+  ir_temp_up:  { icon: '↑', label: 'Temperature UP',  cls: 'badge-schedule'},
+  ir_temp_down:{ icon: '↓', label: 'Temperature DOWN',cls: 'badge-schedule'},
+  power_on:    { icon: '●', label: 'Power ON (confirmed)', cls: 'badge-state'},
+  power_off:   { icon: '○', label: 'Power OFF (confirmed)',cls: 'badge-mode'},
+};
+
+function renderHeaterLogs(events) {
+  const thead = document.querySelector('.log-table thead tr');
+  thead.innerHTML = `
+    <th style="width:160px">Time</th>
+    <th style="width:240px">What happened</th>
+    <th>Confirmed by</th>
+  `;
+
+  const tbody = document.getElementById('logBody');
+  tbody.innerHTML = '';
+
+  if (!events.length) {
+    tbody.innerHTML = `<tr><td colspan="3"><div class="empty-state">
+      <div class="empty-icon">◎</div>
+      <div class="empty-title">No heater activity</div>
+      <div class="empty-sub">Commands appear here once the ESP32 picks them up and sends them.</div>
+    </div></td></tr>`;
+    document.getElementById('countText').textContent = '0 events';
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  events.forEach(entry => {
+    const cfg = HEATER_ACTION_LABELS[entry.action] || { icon: '○', label: entry.action, cls: '' };
+    const confirmedBy = entry.source === 'device'
+      ? '<span class="src-badge src-device">Telemetry</span>'
+      : '<span class="src-badge src-device">IR sent by ESP32</span>';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="ts-cell">${formatTimestamp(entry.ts)}</td>
+      <td><span class="badge ${cfg.cls}">${cfg.icon} ${cfg.label}</span></td>
+      <td>${confirmedBy}</td>
+    `;
+    frag.appendChild(tr);
+  });
+  tbody.appendChild(frag);
+  document.getElementById('countText').textContent = `${events.length} event${events.length !== 1 ? 's' : ''}`;
+  document.getElementById('totalBadge').style.display = 'none';
+}
+
+async function loadHeaterLogs() {
+  const hours = document.getElementById('timeRange').value;
+  try {
+    const r = await fetch(`${HUB}/api/logs/heater?hours=${hours}&limit=300`);
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    renderHeaterLogs(d.events || []);
+    document.getElementById('statusDot').className = 'dot online';
+    document.getElementById('statusText').textContent = 'live';
+    const now = new Date();
+    document.getElementById('lastUpdated').textContent =
+      `updated ${now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}`;
+  } catch {
+    document.getElementById('statusDot').className = 'dot';
+    document.getElementById('statusText').textContent = 'offline';
+    toast('Could not reach hub');
+  }
+}
+
+function restoreTableHeader() {
+  const thead = document.querySelector('.log-table thead tr');
+  thead.innerHTML = `
+    <th style="width:160px">Time</th>
+    <th style="width:130px">Event</th>
+    <th>Details</th>
+    <th style="width:110px">Source</th>
+    <th style="width:100px">Status</th>
+  `;
+}
+
+// ── Filtering ──────────────────────────────────────────────────
+function setFilter(filter, btn) {
+  activeFilter = filter;
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  if (filter === 'heater') {
+    loadHeaterLogs();
+  } else {
+    restoreTableHeader();
+    renderLogs(allLogs);
+    applyFilters();
+  }
+}
+
+function applyFilters() {
+  const query = document.getElementById('searchInput').value.toLowerCase();
+  const rows  = document.querySelectorAll('#logBody tr[data-type]');
+  let visible = 0;
+
+  rows.forEach(row => {
+    const type        = row.dataset.type;
+    const details     = row.dataset.details.toLowerCase();
+    const typeMatch   = activeFilter === 'all' || type === activeFilter;
+    const searchMatch = !query || details.includes(query) || type.includes(query);
+    const show = typeMatch && searchMatch;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+
+  const total = rows.length;
+  document.getElementById('countText').textContent =
+    `${visible} event${visible !== 1 ? 's' : ''}`;
+
+  const totalBadge = document.getElementById('totalBadge');
+  if (visible < total) {
+    totalBadge.style.display = '';
+    totalBadge.textContent = `${total} total`;
+  } else {
+    totalBadge.style.display = 'none';
+  }
+
+  const existing = document.getElementById('emptyState');
+  if (existing) existing.remove();
+  if (visible === 0 && total > 0) {
+    const tr = document.createElement('tr');
+    tr.id = 'emptyState';
+    tr.innerHTML = `<td colspan="5"><div class="empty-state">
+      <div class="empty-icon">◎</div>
+      <div class="empty-title">No matching events</div>
+      <div class="empty-sub">Try adjusting your search or filters.</div>
+    </div></td>`;
+    document.getElementById('logBody').appendChild(tr);
+  }
+}
+
+// ── Render ─────────────────────────────────────────────────────
+function renderLogs(logs) {
+  const tbody = document.getElementById('logBody');
+  tbody.innerHTML = '';
+
+  if (!logs.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state">
+      <div class="empty-icon">◎</div>
+      <div class="empty-title">No events yet</div>
+      <div class="empty-sub">Events will appear here as the device reports in.</div>
+    </div></td></tr>`;
+    document.getElementById('countText').textContent = '0 events';
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  logs.forEach(entry => {
+    const tr = document.createElement('tr');
+    tr.dataset.type    = entry.event_type;
+    tr.dataset.details = formatDetails(entry.event_type, entry.details).toLowerCase() + ' ' + entry.source;
+    tr.innerHTML = `
+      <td class="ts-cell">${formatTimestamp(entry.ts)}</td>
+      <td>${formatEventBadge(entry.event_type)}</td>
+      <td class="details-cell">${formatDetails(entry.event_type, entry.details)}</td>
+      <td>${formatSource(entry.source)}</td>
+      <td>${formatStatus(entry.status)}</td>
+    `;
+    frag.appendChild(tr);
+  });
+  tbody.appendChild(frag);
+  applyFilters();
+}
+
+// ── Fetch ──────────────────────────────────────────────────────
+async function loadLogs() {
+  if (activeFilter === 'heater') { await loadHeaterLogs(); return; }
+  const hours = document.getElementById('timeRange').value;
+  try {
+    const r = await fetch(`${HUB}/api/logs?hours=${hours}&limit=500`);
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    allLogs = d.logs || [];
+    restoreTableHeader();
+    renderLogs(allLogs);
+    const now = new Date();
+    document.getElementById('lastUpdated').textContent =
+      `updated ${now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}`;
+    document.getElementById('statusDot').className = 'dot online';
+    document.getElementById('statusText').textContent = 'live';
+  } catch (e) {
+    document.getElementById('statusDot').className = 'dot';
+    document.getElementById('statusText').textContent = 'offline';
+    toast('Could not reach hub');
+  }
+}
+
+// ── Auto-refresh ───────────────────────────────────────────────
+function toggleAutoRefresh() {
+  autoRefresh = !autoRefresh;
+  document.getElementById('refreshDot').className = 'refresh-dot' + (autoRefresh ? ' active' : '');
+  document.getElementById('refreshLabel').textContent = autoRefresh ? 'Auto' : 'Paused';
+  if (autoRefresh) scheduleRefresh();
+  else clearTimeout(refreshTimer);
+}
+
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  if (autoRefresh) {
+    refreshTimer = setTimeout(async () => {
+      await loadLogs();
+      scheduleRefresh();
+    }, REFRESH_MS);
+  }
+}
+
+// ── Export CSV ──────────────────────────────────────────────────
+function exportCSV() {
+  const visible = [...document.querySelectorAll('#logBody tr[data-type], #logBody tr td')]
+    .filter(r => r.tagName === 'TR' && r.style.display !== 'none')
+    .map(r => {
+      const cells = r.querySelectorAll('td');
+      return [...cells].map(c => `"${c.textContent.trim().replace(/\n/g,' ').replace(/"/g,'""')}"`).join(',');
+    });
+  const blob = new Blob([visible.join('\n')], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `thermohub-${activeFilter}-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast(`Exported ${visible.length} rows`);
+}
+
+// ── Toast ──────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── Init ───────────────────────────────────────────────────────
+(async () => {
+  document.getElementById('refreshDot').className = 'refresh-dot active';
+  await loadLogs();
+  scheduleRefresh();
+})();
+</script>
+</body>
+</html>

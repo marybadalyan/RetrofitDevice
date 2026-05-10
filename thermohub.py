@@ -84,6 +84,7 @@ class MessageCrypto:
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "thermo.db"
 DASHBOARD_HTML = BASE_DIR / "dashboard.html"  # served at /
+LOGS_HTML = BASE_DIR / "logs.html"             # served at /device/{id}/logs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("thermohub")
@@ -254,7 +255,8 @@ def init_db():
             id      INTEGER PRIMARY KEY AUTOINCREMENT,
             ts      TEXT NOT NULL,
             command TEXT NOT NULL,
-            source  TEXT DEFAULT 'hub'
+            source  TEXT DEFAULT 'hub',
+            origin  TEXT DEFAULT 'hub'
         );
 
         CREATE TABLE IF NOT EXISTS schedule (
@@ -280,6 +282,22 @@ def init_db():
             created_at  TEXT NOT NULL
         );
         """)
+        # Migrate: add created_at column to schedule table
+        sched_cols = [r[1] for r in conn.execute("PRAGMA table_info(schedule)").fetchall()]
+        if 'created_at' not in sched_cols:
+            conn.execute("ALTER TABLE schedule ADD COLUMN created_at TEXT")
+            conn.commit()
+
+        # Migrate: add origin column to existing databases
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(commands)").fetchall()]
+        if 'origin' not in cols:
+            conn.execute("ALTER TABLE commands ADD COLUMN origin TEXT")
+            conn.execute("""
+                UPDATE commands SET origin =
+                  CASE WHEN source IN ('dashboard','schedule','hub') THEN source
+                       ELSE 'dashboard' END
+            """)
+            conn.commit()
     log.info("Database ready: %s", DB_PATH)
 
 # ── MODELS ───────────────────────────────────────────────────
@@ -375,11 +393,13 @@ def is_learn_busy() -> bool:
 # Schedule only overrides again when a NEW slot becomes active after the manual change.
 last_manual_temp_ts: float = 0.0          # when user last pressed +/-
 last_manual_slot_key: str = ""            # which slot was active at that moment
+last_manual_off_slot_key: str = ""        # slot key when user manually turned heater off
 
 # ── SCHEDULE COMMAND DEDUP ──────────────────────────────────
 # Prevents command-type schedule entries from firing every 10s telemetry cycle.
 # Each unique slot+command only fires once until the slot changes.
 last_schedule_cmd_key: str = ""
+last_schedule_temp_key: str = ""
 
 # ─────────────────────────────────────────────────────────────
 #  ROUTES
@@ -439,6 +459,15 @@ def device_logout(device_id: str, request: Request):
     request.session.pop(f"auth_{device_id}", None)
     return RedirectResponse(f"/device/{device_id}", status_code=303)
 
+@app.get("/device/{device_id}/logs")
+def device_logs_page(device_id: str, request: Request):
+    device_id = device_id.upper()
+    if device_id not in DEVICES:
+        raise HTTPException(404, "Device not found")
+    if is_authenticated(request, device_id):
+        return FileResponse(LOGS_HTML)
+    return RedirectResponse(f"/device/{device_id}", status_code=303)
+
 # ── Guard all API routes — ESP32 uses Authorization header, browser uses session
 def require_auth(device_id: str, request: Request):
     device_id = device_id.upper()
@@ -454,7 +483,7 @@ def require_auth(device_id: str, request: Request):
 # ── ESP32: POST telemetry ──────────────────────────────────────
 @app.post("/api/telemetry")
 async def post_telemetry(request: Request):
-    global last_schedule_cmd_key
+    global last_schedule_cmd_key, last_schedule_temp_key
     device_id  = request.headers.get("X-Device-ID", "").upper()
     encrypted  = request.headers.get("Content-Type", "") == "application/x-encrypted"
     device_pwd = None
@@ -533,8 +562,9 @@ async def post_telemetry(request: Request):
             now_local = datetime.now()
             current_slot_key = f"{now_local.strftime('%a')}_{action.get('slot_time', 'none')}"
             manual_was_in_this_slot = (current_slot_key == last_manual_slot_key)
+            user_turned_off_in_this_slot = (current_slot_key == last_manual_off_slot_key)
 
-            if not manual_was_in_this_slot:
+            if not manual_was_in_this_slot and not user_turned_off_in_this_slot:
                 sched_temp = action["temp"]
                 need_update = target_temp is None or abs(sched_temp - target_temp) >= 0.5
 
@@ -552,8 +582,8 @@ async def post_telemetry(request: Request):
                 if not device_state["power"]:
                     device_state["power"] = True
                     with get_db() as conn:
-                        conn.execute("INSERT INTO commands (ts, command, source) VALUES (?,?,?)",
-                                     (datetime.utcnow().isoformat(), "on", "schedule"))
+                        conn.execute("INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
+                                     (datetime.utcnow().isoformat(), "on", "schedule", "schedule"))
                         conn.commit()
                     log.info("Schedule turned heater ON")
 
@@ -565,8 +595,18 @@ async def post_telemetry(request: Request):
                                      (json.dumps(sched_temp),))
                         conn.commit()
                     log.info("Schedule temp override: %.1f°C (slot: %s)", sched_temp, current_slot_key)
+                    temp_slot_key = f"{current_slot_key}_{sched_temp}"
+                    if temp_slot_key != last_schedule_temp_key:
+                        last_schedule_temp_key = temp_slot_key
+                        with get_db() as conn:
+                            conn.execute(
+                                "INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
+                                (datetime.utcnow().isoformat(), f"temp:{sched_temp}", "schedule", "schedule")
+                            )
+                            conn.commit()
             else:
-                log.debug("Schedule suppressed — user manually changed temp in slot %s", current_slot_key)
+                log.debug("Schedule suppressed — manual override in slot %s (temp_change=%s off=%s)",
+                          current_slot_key, manual_was_in_this_slot, user_turned_off_in_this_slot)
 
         elif action["type"] == "command" and action["command"]:
             # Dedup: only fire each command slot once
@@ -576,8 +616,8 @@ async def post_telemetry(request: Request):
                 last_schedule_cmd_key = cmd_slot_key
                 with get_db() as conn:
                     conn.execute(
-                        "INSERT INTO commands (ts, command, source) VALUES (?,?,?)",
-                        (datetime.utcnow().isoformat(), action["command"], "schedule")
+                        "INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
+                        (datetime.utcnow().isoformat(), action["command"], "schedule", "schedule")
                     )
                     conn.commit()
                 log.info("Schedule command queued: %s", action["command"])
@@ -604,9 +644,12 @@ def set_auto_control(body: AutoControlIn):
     global user_disabled_auto_control
     device_state["auto_control"] = body.enabled
     user_disabled_auto_control = not body.enabled  # remember if user explicitly turned it off
+    cmd = "auto_on" if body.enabled else "auto_off"
     with get_db() as conn:
         conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('auto_control', ?)",
                      (json.dumps(body.enabled),))
+        conn.execute("INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
+                     (datetime.utcnow().isoformat(), cmd, "dashboard", "dashboard"))
         conn.commit()
     log.info("Auto control %s", "enabled" if body.enabled else "disabled")
     return {"status": "ok", "auto_control": body.enabled}
@@ -614,7 +657,7 @@ def set_auto_control(body: AutoControlIn):
 # ── Dashboard / ESP32: send command ───────────────────────────
 @app.post("/api/command")
 def post_command(body: CommandIn):
-    global last_manual_temp_ts, last_manual_slot_key, learn_state
+    global last_manual_temp_ts, last_manual_slot_key, last_manual_off_slot_key, learn_state
     valid = {"on", "off", "temp_up", "temp_down",
              "learn_on_off", "learn_temp_up", "learn_temp_down", "learn_clear"}
     if body.command not in valid:
@@ -645,8 +688,15 @@ def post_command(body: CommandIn):
         learn_state["ts"]     = None
 
     # Update state immediately
-    if body.command == "on":  device_state["power"] = True
-    if body.command == "off": device_state["power"] = False
+    if body.command == "on":
+        device_state["power"] = True
+        last_manual_off_slot_key = ""   # user explicitly turned on — cancel off-override
+    if body.command == "off":
+        device_state["power"] = False
+        slot = get_scheduled_action_now()
+        now_local = datetime.now()
+        last_manual_off_slot_key = f"{now_local.strftime('%a')}_{slot['slot_time'] if slot else 'none'}"
+        log.info("Manual OFF recorded for slot %s", last_manual_off_slot_key)
 
     # Update target immediately so dashboard reflects change without waiting for ESP
     # (skip if ir_only flag is set — for IR commands that shouldn't change target)
@@ -675,9 +725,10 @@ def post_command(body: CommandIn):
                          (json.dumps(device_state["target_temp"]),))
             conn.commit()
 
+    logged_cmd = ("ir_" + body.command) if body.ir_only and body.command in ("temp_up", "temp_down") else body.command
     with get_db() as conn:
-        conn.execute("INSERT INTO commands (ts, command, source) VALUES (?,?,'dashboard')",
-                     (datetime.utcnow().isoformat(), body.command))
+        conn.execute("INSERT INTO commands (ts, command, source, origin) VALUES (?,?,'dashboard','dashboard')",
+                     (datetime.utcnow().isoformat(), logged_cmd))
         conn.commit()
 
     log.info("Command queued: %s", body.command)
@@ -719,6 +770,10 @@ def get_pending_command(request: Request):
         conn.commit()
 
         cmd = row["command"]
+
+        # Translate logging-only variants back to firmware commands
+        if cmd in ("ir_temp_up", "ir_temp_down"):
+            cmd = cmd[3:]  # strips "ir_" → "temp_up" / "temp_down"
 
         # Resolve custom button to raw IR data
         if cmd.startswith("custom_"):
@@ -867,7 +922,7 @@ def learn_custom_button(button_id: int):
             "UPDATE commands SET source='sent' "
             "WHERE command LIKE 'learn_%' AND source IN ('dashboard','schedule')"
         )
-        conn.execute("INSERT INTO commands (ts, command, source) VALUES (?,?,'dashboard')",
+        conn.execute("INSERT INTO commands (ts, command, source, origin) VALUES (?,?,'dashboard','dashboard')",
                      (datetime.utcnow().isoformat(), "learn_custom"))
         conn.commit()
     log.info("Starting learn for custom button: id=%d name=%s", button_id, row["name"])
@@ -885,13 +940,57 @@ def send_custom_button(button_id: int):
 
     # Queue as a custom IR command (send only, no other effects)
     with get_db() as conn:
-        conn.execute("INSERT INTO commands (ts, command, source) VALUES (?,?,?)",
-                     (datetime.utcnow().isoformat(), f"custom_{button_id}", "dashboard"))
+        conn.execute("INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
+                     (datetime.utcnow().isoformat(), f"custom_{button_id}", "dashboard", "dashboard"))
         conn.commit()
     log.info("Custom button queued: %s (proto=%d addr=0x%04X cmd=0x%04X)",
              row["name"], row["protocol"], row["address"], row["command"])
     return {"status": "queued", "name": row["name"], "protocol": row["protocol"],
             "address": row["address"], "command": row["command"]}
+
+# ── Heater activity log ───────────────────────────────────────
+@app.get("/api/logs/heater")
+def get_heater_logs(hours: int = 72, limit: int = 300):
+    """
+    Returns only confirmed heater events:
+    - IR commands the ESP32 actually sent (source='sent')
+    - Power state changes detected in telemetry
+    """
+    cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+    events = []
+
+    HEATER_CMDS = {"on", "off", "temp_up", "temp_down", "ir_temp_up", "ir_temp_down"}
+
+    with get_db() as conn:
+        cmd_rows = conn.execute("""
+            SELECT ts, command FROM commands
+            WHERE ts > ?
+              AND source = 'sent'
+              AND command IN ('on','off','temp_up','temp_down','ir_temp_up','ir_temp_down')
+            ORDER BY ts DESC LIMIT ?
+        """, (cutoff, limit)).fetchall()
+
+        tele_rows = conn.execute("""
+            SELECT ts, power FROM telemetry
+            WHERE ts > ? ORDER BY ts ASC
+        """, (cutoff,)).fetchall()
+
+    for r in cmd_rows:
+        events.append({"ts": r["ts"], "action": r["command"], "source": "sent"})
+
+    prev_power = None
+    for r in tele_rows:
+        if prev_power is not None and r["power"] != prev_power:
+            events.append({
+                "ts": r["ts"],
+                "action": "power_on" if r["power"] else "power_off",
+                "source": "device",
+            })
+        if r["power"] is not None:
+            prev_power = r["power"]
+
+    events.sort(key=lambda x: x["ts"], reverse=True)
+    return {"events": events[:limit]}
 
 # ── History ───────────────────────────────────────────────────
 @app.get("/api/history")
@@ -925,6 +1024,82 @@ def get_history(hours: int = 336):
 
     return {"readings": readings, "pid_cycles": cycles, "calibration": calibration}
 
+# ── Logs: combined event history ──────────────────────────────
+@app.get("/api/logs")
+def get_logs(limit: int = 300, hours: int = 72):
+    cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+    logs = []
+
+    with get_db() as conn:
+        cmd_rows = conn.execute("""
+            SELECT ts, command, source, COALESCE(origin, source) as origin FROM commands
+            WHERE ts > ?
+            ORDER BY ts DESC
+            LIMIT ?
+        """, (cutoff, limit)).fetchall()
+
+        tele_rows = conn.execute("""
+            SELECT ts, power, mode FROM telemetry
+            WHERE ts > ?
+            ORDER BY ts ASC
+        """, (cutoff,)).fetchall()
+
+        sched_rows = conn.execute("""
+            SELECT created_at, day, time, type, temp, command FROM schedule
+            WHERE created_at > ?
+            ORDER BY created_at DESC
+        """, (cutoff,)).fetchall()
+
+    for r in cmd_rows:
+        src    = r["source"]
+        origin = r["origin"]
+        logs.append({
+            "ts": r["ts"],
+            "event_type": "schedule" if origin == "schedule" else "command",
+            "details": r["command"],
+            "source": "device" if src == "sent" else src,
+            "status": "delivered" if src == "sent" else "queued",
+        })
+
+    prev_power, prev_mode = None, None
+    for r in tele_rows:
+        if prev_power is not None and r["power"] != prev_power:
+            logs.append({
+                "ts": r["ts"],
+                "event_type": "state_change",
+                "details": f"power_{'on' if r['power'] else 'off'}",
+                "source": "device",
+                "status": "ok",
+            })
+        if prev_mode is not None and r["mode"] is not None and r["mode"] != prev_mode:
+            logs.append({
+                "ts": r["ts"],
+                "event_type": "mode_change",
+                "details": f"mode_{r['mode'].lower()}",
+                "source": "device",
+                "status": "ok",
+            })
+        if r["power"] is not None:
+            prev_power = r["power"]
+        if r["mode"] is not None:
+            prev_mode = r["mode"]
+
+    for r in sched_rows:
+        if r["type"] == "temp" and r["temp"] is not None:
+            desc = f"{r['day']} {r['time']} → {r['temp']}°C"
+        else:
+            desc = f"{r['day']} {r['time']} → {r['command']}"
+        logs.append({
+            "ts": r["created_at"],
+            "event_type": "scheduled",
+            "details": desc,
+            "source": "dashboard",
+            "status": "ok",
+        })
+
+    logs.sort(key=lambda x: x["ts"], reverse=True)
+    return {"logs": logs[:limit], "total": len(logs)}
+
 # ── Schedule: GET ─────────────────────────────────────────────
 @app.get("/api/schedule")
 def get_schedule():
@@ -935,11 +1110,12 @@ def get_schedule():
 # ── Schedule: POST (save from dashboard) ──────────────────────
 @app.post("/api/schedule")
 def save_schedule(body: ScheduleIn):
+    now = datetime.utcnow().isoformat()
     with get_db() as conn:
         conn.execute("DELETE FROM schedule")
         conn.executemany(
-            "INSERT INTO schedule (day, time, type, temp, command) VALUES (?,?,?,?,?)",
-            [(e.day, e.time, e.type, e.temp, e.command) for e in body.schedule]
+            "INSERT INTO schedule (day, time, type, temp, command, created_at) VALUES (?,?,?,?,?,?)",
+            [(e.day, e.time, e.type, e.temp, e.command, now) for e in body.schedule]
         )
         conn.commit()
     log.info("Schedule saved: %d entries", len(body.schedule))
@@ -1014,6 +1190,13 @@ def get_config():
 def save_config(body: ConfigIn):
     data = body.model_dump(exclude_none=True)
     with get_db() as conn:
+        if 'pid_mode' in data:
+            row = conn.execute("SELECT value FROM config WHERE key='pid_mode'").fetchone()
+            old_mode = json.loads(row["value"]).upper() if row else None
+            new_mode = str(data['pid_mode']).upper()
+            if old_mode != new_mode:
+                conn.execute("INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
+                             (datetime.utcnow().isoformat(), f"mode_{new_mode.lower()}", "dashboard", "dashboard"))
         conn.executemany("INSERT OR REPLACE INTO config (key, value) VALUES (?,?)",
                          [(k, json.dumps(v)) for k, v in data.items()])
         conn.commit()
