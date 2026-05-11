@@ -95,10 +95,11 @@ void HubClient::pollCommand(const WallClockSnapshot& wallNow) {
     const String raw = http.getString();
     http.end();
 
-    // Decrypt hub response; fall back to raw if it looks like plain JSON
-    const String payload = (raw.length() > 0 && raw[0] != '{')
-                           ? crypto_.decryptEnvelope(raw)
-                           : raw;
+    const String payload = crypto_.decryptEnvelope(raw);
+    if (payload.isEmpty()) {
+        diag::log(DiagLevel::WARN, "HUB", "command poll: HMAC failure");
+        return;
+    }
 
     // Log successful poll
     static bool firstPoll = true;
@@ -198,10 +199,9 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
         static_cast<unsigned long>(pendingTelemetry_.uptimeMs)
     );
 
-    const String envelope = crypto_.encryptEnvelope(String(body));
+    const String envelope = crypto_.encryptEnvelope(String(body), wallNow.unixMs);
     http.addHeader("Content-Type", "application/x-encrypted");
     http.addHeader("X-Device-ID", DEVICE_ID);
-    http.addHeader("Authorization", DEVICE_PASS);
     const int httpCode = http.POST(envelope);
 
     if (httpCode != 200) {
@@ -214,10 +214,11 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
     const String encResponse = http.getString();
     http.end();
 
-    // Decrypt hub response; fall back to raw if it looks like plain JSON
-    const String response = (encResponse.length() > 0 && encResponse[0] != '{')
-                            ? crypto_.decryptEnvelope(encResponse)
-                            : encResponse;
+    const String response = crypto_.decryptEnvelope(encResponse);
+    if (response.isEmpty()) {
+        diag::log(DiagLevel::WARN, "HUB", "telemetry: HMAC failure in response");
+        return;
+    }
 
     float scheduledTarget = 0.0f;
     if (extractJsonFloat(response, "scheduled_target", scheduledTarget)) {
