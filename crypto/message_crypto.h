@@ -32,8 +32,7 @@ public:
     explicit MessageCrypto(const char* device_pass);
 
     // Encrypt plaintext -> "ts:enc:sig" envelope.  Returns "" on error.
-    // timestampMs: wall-clock unix ms for replay protection; pass 0 to fall back to uptime.
-    String encryptEnvelope(const String& plaintext, uint64_t timestampMs = 0);
+    String encryptEnvelope(const String& plaintext);
 
     // Decrypt "ts:enc:sig" -> plaintext.  Returns "" on HMAC failure or bad format.
     String decryptEnvelope(const String& envelope);

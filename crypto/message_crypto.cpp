@@ -75,7 +75,7 @@ MessageCrypto::MessageCrypto(const char* device_pass) {
     deriveKeys(device_pass);
 }
 
-String MessageCrypto::encryptEnvelope(const String& plaintext, uint64_t timestampMs) {
+String MessageCrypto::encryptEnvelope(const String& plaintext) {
     // 1. Random 16-byte nonce from ESP32 hardware RNG
     uint8_t nonce[16];
     for (int i = 0; i < 16; i += 4) {
@@ -96,12 +96,9 @@ String MessageCrypto::encryptEnvelope(const String& plaintext, uint64_t timestam
     const String enc = toHex(nonce, 16) + toHex(buf, len);
     delete[] buf;
 
-    // 4. Timestamp — use wall-clock unix ms when provided, fall back to uptime
-    char ts[24];
-    const unsigned long long tsVal = (timestampMs > 0)
-        ? static_cast<unsigned long long>(timestampMs)
-        : static_cast<unsigned long long>(millis());
-    snprintf(ts, sizeof(ts), "%llu", tsVal);
+    // 4. Timestamp (device uptime ms — binds HMAC to this session)
+    char ts[16];
+    snprintf(ts, sizeof(ts), "%lu", static_cast<unsigned long>(millis()));
 
     // 5. HMAC over "<ts>:<enc>"
     const String mac_input = String(ts) + ":" + enc;
@@ -165,7 +162,7 @@ String MessageCrypto::decryptEnvelope(const String& envelope) {
 
 MessageCrypto::MessageCrypto(const char* /*device_pass*/) {}
 
-String MessageCrypto::encryptEnvelope(const String& plaintext, uint64_t /*timestampMs*/) {
+String MessageCrypto::encryptEnvelope(const String& plaintext) {
     return plaintext; // passthrough — no crypto on host builds
 }
 

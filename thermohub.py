@@ -4,7 +4,7 @@ thermohub.py  —  FastAPI hub for ESP32 thermostat
 Run: uvicorn thermohub:app --host 0.0.0.0 --port 5000 --reload
 
 Install:
-  pip install fastapi uvicorn[standard] scikit-learn pandas numpy
+  pip install fastapi uvicorn[standard] scikit-learn pandas numpy cryptography
 """
 
 import json
@@ -302,16 +302,19 @@ def init_db():
 
 # ── MODELS ───────────────────────────────────────────────────
 class TelemetryIn(BaseModel):
-    room_temp:   Optional[float] = None
-    target_temp: Optional[float] = None
-    power:       Optional[bool]  = None
-    mode:        Optional[str]   = None
-    pid_p:       Optional[float] = None
-    pid_i:       Optional[float] = None
-    pid_d:       Optional[float] = None
-    pid_steps:   Optional[int]   = None
-    integral:    Optional[float] = None
-    uptime_ms:   Optional[int]   = None
+    room_temp:          Optional[float] = None
+    target_temp:        Optional[float] = None
+    power:              Optional[bool]  = None
+    mode:               Optional[str]   = None
+    pid_p:              Optional[float] = None
+    pid_i:              Optional[float] = None
+    pid_d:              Optional[float] = None
+    pid_steps:          Optional[int]   = None
+    integral:           Optional[float] = None
+    uptime_ms:          Optional[int]   = None
+    learned_on_off:     Optional[bool]  = None
+    learned_temp_up:    Optional[bool]  = None
+    learned_temp_down:  Optional[bool]  = None
 
 class CommandIn(BaseModel):
     command: str   # 'on' | 'off' | 'temp_up' | 'temp_down'
@@ -368,12 +371,12 @@ user_disabled_auto_control = False
 # Tracks the last uptime the device reported — used to detect reboots
 # and ensure the boot-time auto-control reset fires only once per session.
 _last_device_uptime_ms: int = 0
-_device_boot_reset_done: bool = False
+_device_boot_reset_done: bool = True   # True = don't reset until a real reboot is detected
 
 # ── IR LEARN STATE ─────────────────────────────────────────────
 # Tracks the last learn operation for the dashboard to poll.
 # status: "idle" | "listening" | "ok" | "fail"
-LEARN_STALE_TIMEOUT = 10  # seconds — auto-expire a stuck "listening" session
+LEARN_STALE_TIMEOUT = 20  # seconds — auto-expire a stuck "listening" session
 learn_state = {
     "status": "idle",
     "cmd":    None,
@@ -558,6 +561,24 @@ async def post_telemetry(request: Request):
                 log.info("Device rebooted (uptime=%dms) — auto control reset to OFF", data.uptime_ms)
             _device_boot_reset_done = True  # done for this boot session
 
+    # Sync learned-code state from device — device is authoritative about its own NVS
+    learned_map = {
+        "on_off":    data.learned_on_off,
+        "temp_up":   data.learned_temp_up,
+        "temp_down": data.learned_temp_down,
+    }
+    changed = False
+    for key, device_val in learned_map.items():
+        if device_val is not None and learn_state["learned"].get(key) != device_val:
+            learn_state["learned"][key] = device_val
+            changed = True
+    if changed:
+        with get_db() as conn:
+            conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('learned_codes', ?)",
+                         (json.dumps(learn_state["learned"]),))
+            conn.commit()
+        log.info("Learned codes synced from device telemetry: %s", learn_state["learned"])
+
     device_state["last_seen"] = now
 
     # Only persist rows that have real sensor data — keeps history clean
@@ -584,16 +605,6 @@ async def post_telemetry(request: Request):
     # Check schedule for current slot
     action = get_scheduled_action_now()
     response = {"status": "ok", "auto_control": device_state["auto_control"]}
-
-    # Push pid_mode config to ESP32 if it differs from what the device reported
-    with get_db() as conn:
-        row = conn.execute("SELECT value FROM config WHERE key='pid_mode'").fetchone()
-    if row:
-        cfg_mode = row["value"].strip('"').upper()  # stored as JSON string
-        reported_mode = (data.mode or "FAST").upper()
-        if cfg_mode in ("FAST", "ECO") and cfg_mode != reported_mode:
-            response["pid_mode"] = cfg_mode
-            log.info("Pushing mode change to ESP32: %s → %s", reported_mode, cfg_mode)
 
     if action:
         if action["type"] == "temp" and action["temp"] is not None:
@@ -724,9 +735,13 @@ def post_command(body: CommandIn):
         # fall through to enqueue as a regular command below
 
     if body.command == "learn_clear":
-        learn_state["status"] = "idle"
-        learn_state["cmd"]    = None
-        learn_state["ts"]     = None
+        learn_state["status"]  = "idle"
+        learn_state["cmd"]     = None
+        learn_state["ts"]      = None
+        learn_state["learned"] = {}
+        with get_db() as conn:
+            conn.execute("DELETE FROM config WHERE key='learned_codes'")
+            conn.commit()
 
     # Update state immediately
     if body.command == "on":

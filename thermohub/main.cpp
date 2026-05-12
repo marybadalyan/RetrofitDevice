@@ -586,16 +586,19 @@ void loop() {
     if (nowMs - lastTelemetryMs >= 10000) {
         lastTelemetryMs = nowMs;
         HubClient::Telemetry t;
-        t.roomTempC   = roomTempC;
-        t.targetTempC = gTargetTempC;
-        t.powerOn     = gHeaterPowered;
-        t.mode        = (gPid.mode() == ThermostatMode::ECO) ? "ECO" : "FAST";
-        t.pidP        = gLastPidResult.p;
-        t.pidI        = gLastPidResult.i;
-        t.pidD        = gLastPidResult.d;
-        t.pidSteps    = gHubClient.autoControl() ? gLastPidResult.steps : 0;
-        t.integral    = gLastPidResult.i;
-        t.uptimeMs    = nowMs;
+        t.roomTempC       = roomTempC;
+        t.targetTempC     = gTargetTempC;
+        t.powerOn         = gHeaterPowered;
+        t.mode            = (gPid.mode() == ThermostatMode::ECO) ? "ECO" : "FAST";
+        t.pidP            = gLastPidResult.p;
+        t.pidI            = gLastPidResult.i;
+        t.pidD            = gLastPidResult.d;
+        t.pidSteps        = gHubClient.autoControl() ? gLastPidResult.steps : 0;
+        t.integral        = gLastPidResult.i;
+        t.uptimeMs        = nowMs;
+        t.learnedOnOff    = gIrLearner.hasLearned(Command::ON_OFF);
+        t.learnedTempUp   = gIrLearner.hasLearned(Command::TEMP_UP);
+        t.learnedTempDown = gIrLearner.hasLearned(Command::TEMP_DOWN);
         gHubClient.submitTelemetry(t);
     }
 

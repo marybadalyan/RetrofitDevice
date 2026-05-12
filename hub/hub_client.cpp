@@ -13,7 +13,6 @@
 #if __has_include(<WiFi.h>) && __has_include(<HTTPClient.h>)
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <WiFiClientSecure.h>
 #define HUBCLIENT_HAS_HTTP 1
 #else
 #define HUBCLIENT_HAS_HTTP 0
@@ -92,13 +91,16 @@ void HubClient::pollCommand(const WallClockSnapshot& wallNow) {
 
     hubReachable_ = true;
     hubUnreachableSinceMs_ = 0;
-    const String raw = http.getString();
+    String raw = http.getString();
     http.end();
+    raw.trim();   // strip any trailing \r\n the HTTP layer may leave
 
-    const String payload = crypto_.decryptEnvelope(raw);
-    if (payload.isEmpty()) {
-        diag::log(DiagLevel::WARN, "HUB", "command poll: HMAC failure");
-        return;
+    // Decrypt hub response; fall back to raw if it looks like plain JSON
+    const String payload = (raw.length() > 0 && raw[0] != '{')
+                           ? crypto_.decryptEnvelope(raw)
+                           : raw;
+    if (payload.length() == 0 && raw.length() > 0) {
+        Serial.println("[HUB] WARNING: command response decryption failed — command dropped");
     }
 
     // Log successful poll
@@ -182,11 +184,12 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
         return;
     }
 
-    char body[256] = {0};
+    char body[320] = {0};
     snprintf(body, sizeof(body),
         "{\"room_temp\":%.1f,\"target_temp\":%.1f,\"power\":%s,"
         "\"mode\":\"%s\",\"pid_p\":%.2f,\"pid_i\":%.3f,"
-        "\"pid_d\":%.2f,\"pid_steps\":%d,\"integral\":%.3f,\"uptime_ms\":%lu}",
+        "\"pid_d\":%.2f,\"pid_steps\":%d,\"integral\":%.3f,\"uptime_ms\":%lu,"
+        "\"learned_on_off\":%s,\"learned_temp_up\":%s,\"learned_temp_down\":%s}",
         pendingTelemetry_.roomTempC,
         pendingTelemetry_.targetTempC,
         pendingTelemetry_.powerOn ? "true" : "false",
@@ -196,12 +199,16 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
         pendingTelemetry_.pidD,
         static_cast<int>(pendingTelemetry_.pidSteps),
         pendingTelemetry_.integral,
-        static_cast<unsigned long>(pendingTelemetry_.uptimeMs)
+        static_cast<unsigned long>(pendingTelemetry_.uptimeMs),
+        pendingTelemetry_.learnedOnOff    ? "true" : "false",
+        pendingTelemetry_.learnedTempUp   ? "true" : "false",
+        pendingTelemetry_.learnedTempDown ? "true" : "false"
     );
 
-    const String envelope = crypto_.encryptEnvelope(String(body), wallNow.unixMs);
+    const String envelope = crypto_.encryptEnvelope(String(body));
     http.addHeader("Content-Type", "application/x-encrypted");
     http.addHeader("X-Device-ID", DEVICE_ID);
+    http.addHeader("Authorization", DEVICE_PASS);
     const int httpCode = http.POST(envelope);
 
     if (httpCode != 200) {
@@ -211,14 +218,14 @@ void HubClient::postTelemetry(const WallClockSnapshot& wallNow) {
     }
 
     hubReachable_ = true;
-    const String encResponse = http.getString();
+    String encResponse = http.getString();
     http.end();
+    encResponse.trim();   // strip any trailing \r\n the HTTP layer may leave
 
-    const String response = crypto_.decryptEnvelope(encResponse);
-    if (response.isEmpty()) {
-        diag::log(DiagLevel::WARN, "HUB", "telemetry: HMAC failure in response");
-        return;
-    }
+    // Decrypt hub response; fall back to raw if it looks like plain JSON
+    const String response = (encResponse.length() > 0 && encResponse[0] != '{')
+                            ? crypto_.decryptEnvelope(encResponse)
+                            : encResponse;
 
     float scheduledTarget = 0.0f;
     if (extractJsonFloat(response, "scheduled_target", scheduledTarget)) {

@@ -25,6 +25,9 @@ public:
         float    integral   = 0.0f;
         const char* mode    = "FAST";
         uint32_t uptimeMs   = 0;
+        bool     learnedOnOff   = false;
+        bool     learnedTempUp  = false;
+        bool     learnedTempDown= false;
     };
 
     // Custom IR command data (for custom button sending)
