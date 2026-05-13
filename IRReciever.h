@@ -4,7 +4,10 @@
 #include <cstdint>
 
 struct DecodedFrame {
-    Command command = Command::NONE;
+    Command  command    = Command::NONE;
+    uint8_t  rawCmd     = 0;
+    uint16_t rawAddress = 0;
+    int      rawProto   = 0;
 };
 
 class IRReceiver {

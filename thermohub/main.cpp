@@ -125,8 +125,9 @@ namespace {
     PidThermostatController::Result gLastPidResult{};
 
     // Last IR command — for OLED display
-    const char* gLastIrCmd   = "none";
-    int         gLastIrSteps = 0;
+    char        gLastIrCmdBuf[32] = "none";
+    const char* gLastIrCmd        = gLastIrCmdBuf;
+    int         gLastIrSteps      = 0;
 
 #ifdef REAL_TEMP_SENSOR
     RoomTempSensor gTempSensor;
@@ -619,9 +620,13 @@ void loop() {
     if (gHubClient.hasPendingCustomIr()) {
         auto ir = gHubClient.consumePendingCustomIr();
         gIrLearner.sendCodeDirect(ir.protocol, ir.address, ir.command);
+        const char* irName = ir.name[0] ? ir.name : "custom";
+        strncpy(gLastIrCmdBuf, irName, sizeof(gLastIrCmdBuf) - 1);
+        gLastIrCmdBuf[sizeof(gLastIrCmdBuf) - 1] = '\0';
+        gLastIrCmd   = gLastIrCmdBuf;
+        gLastIrSteps = 1;
         Serial.printf("[IR] Sent \"%s\": proto=%d addr=0x%04X cmd=0x%04X\n",
-                      ir.name[0] ? ir.name : "custom",
-                      ir.protocol, ir.address, ir.command);
+                      irName, ir.protocol, ir.address, ir.command);
     }
 #endif
 

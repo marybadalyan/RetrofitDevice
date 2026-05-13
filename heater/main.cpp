@@ -20,8 +20,10 @@ namespace {
     Logger           gLogger;
     CommandStatusLed gStatusLed;
 
-    Command gLastCmd   = Command::NONE;
-    float   gSetpointC = 21.0f;
+    Command  gLastCmd       = Command::NONE;
+    uint8_t  gLastRawCmd    = 0;
+    uint16_t gLastRawAddr   = 0;
+    float    gSetpointC     = 21.0f;
 
 #ifdef REAL_IR_RX
     IRReceiver gIrReceiver;
@@ -49,8 +51,12 @@ void updateDisplay() {
     gDisplay.print("C");
 
     gDisplay.setCursor(0, 32);
-    gDisplay.print("IR: ");
-    gDisplay.print(commandToString(gLastCmd));
+    if (gLastCmd == Command::CUSTOM) {
+        gDisplay.printf("IR: CUSTOM %02X@%04X", gLastRawCmd, gLastRawAddr);
+    } else {
+        gDisplay.print("IR: ");
+        gDisplay.print(commandToString(gLastCmd));
+    }
 
     gDisplay.setCursor(0, 44);
 #ifdef REAL_IR_RX
@@ -156,6 +162,8 @@ void loop() {
 #ifdef REAL_IR_RX
     DecodedFrame frame;
     if (gIrReceiver.poll(frame)) {
+        gLastRawCmd  = frame.rawCmd;
+        gLastRawAddr = frame.rawAddress;
         applyCommand(frame.command);
     }
 #endif

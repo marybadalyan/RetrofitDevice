@@ -21,38 +21,50 @@ sed -i '' "s|kHubHost = \"[0-9.]*\"|kHubHost = \"$IP\"|"              "$PREFS"
 echo "==> prefferences.h patched."
 echo ""
 
-# ── Detect serial ports and patch platformio.ini ─────────────────────────────
+# ── Step-by-step port assignment ─────────────────────────────────────────────
 
-# Sort available ports alphabetically: usbserial-0001 sorts before usbserial-3
-# which matches the current convention: thermoDevice=0001, heater=3
-AVAILABLE_PORTS=($(ls /dev/tty.usbserial-* 2>/dev/null | sort))
-PORT_COUNT=${#AVAILABLE_PORTS[@]}
+list_ports() { ls /dev/tty.usbserial-* 2>/dev/null | sort; }
 
-if [ "$PORT_COUNT" -eq 0 ]; then
-    echo "ERROR: No USB serial devices found. Connect both devices and retry."
-    exit 1
-elif [ "$PORT_COUNT" -lt 2 ]; then
-    echo "WARNING: Only 1 USB serial device found (${AVAILABLE_PORTS[0]}) — expected 2."
-    THERMO_PORT="${AVAILABLE_PORTS[0]}"
-    HEATER_PORT="${AVAILABLE_PORTS[0]}"
-else
-    THERMO_PORT="${AVAILABLE_PORTS[0]}"   # alphabetically first  → thermoDevice
-    HEATER_PORT="${AVAILABLE_PORTS[1]}"   # alphabetically second → heater
-    [ "$PORT_COUNT" -gt 2 ] && \
-        echo "WARNING: ${PORT_COUNT} serial ports found — using $THERMO_PORT (thermoDevice) and $HEATER_PORT (heater)."
+# Blocks until a port appears that wasn't in $1 (newline-separated snapshot)
+wait_for_new_port() {
+    local snapshot="$1"
+    while true; do
+        local new
+        new=$(comm -13 <(echo "$snapshot") <(list_ports))
+        [ -n "$new" ] && { echo "$new"; return; }
+        sleep 0.5
+    done
+}
+
+# If any serial devices are already plugged in, ask the user to unplug them first
+EXISTING=$(list_ports)
+if [ -n "$EXISTING" ]; then
+    echo "The following serial devices are already connected:"
+    echo "$EXISTING" | sed 's/^/    /'
+    echo ""
+    echo "Please unplug all devices, then press Enter..."
+    read -r
+    while [ -n "$(list_ports)" ]; do
+        echo "  Still detecting devices — unplug all and press Enter."
+        read -r
+    done
+    echo ""
 fi
 
+echo "==> [1/2]  Plug in the thermoDevice (temp sensor) now..."
+SNAPSHOT=$(list_ports)
+THERMO_PORT=$(wait_for_new_port "$SNAPSHOT")
+echo "    Detected: $THERMO_PORT  →  thermoDevice"
 echo ""
+
+echo "==> [2/2]  Plug in the heater (HVAC) now..."
+SNAPSHOT=$(list_ports)
+HEATER_PORT=$(wait_for_new_port "$SNAPSHOT")
+echo "    Detected: $HEATER_PORT  →  heater"
+echo ""
+
 echo "  thermoDevice → $THERMO_PORT"
 echo "  heater       → $HEATER_PORT"
-echo ""
-echo "Port assignment is based on the dongle's USB serial number (alphabetical sort)."
-echo "If the dongles were swapped between devices, type 's' to swap, or Enter to continue."
-read -r CONFIRM
-if [ "$CONFIRM" = "s" ] || [ "$CONFIRM" = "S" ]; then
-    TMP="$THERMO_PORT"; THERMO_PORT="$HEATER_PORT"; HEATER_PORT="$TMP"
-    echo "==> Swapped:  thermoDevice → $THERMO_PORT   heater → $HEATER_PORT"
-fi
 echo ""
 
 

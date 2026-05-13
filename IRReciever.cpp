@@ -35,20 +35,16 @@ bool IRReceiver::poll(DecodedFrame& outFrame) {
         return false;
     }
 
-    const uint8_t cmdByte = static_cast<uint8_t>(d.command & 0xFF);
+    const uint8_t  cmdByte = static_cast<uint8_t>(d.command & 0xFF);
+    const uint16_t addr    = static_cast<uint16_t>(d.address);
+    const int      proto   = static_cast<int>(d.protocol);
     IrReceiver.resume();
 
     Command cmd = Command::NONE;
     if (!decodeCommand(cmdByte, cmd)) {
-        // Rate-limit to avoid flooding serial with noise from other remotes
-        static uint32_t lastUnknownMs = 0;
-        const uint32_t nowMs = millis();
-        if (nowMs - lastUnknownMs >= 2000) {
-            lastUnknownMs = nowMs;
-            Serial.printf("[IR-RX] unknown cmd=0x%02X (addr=0x%04X proto=%d)\n",
-                          cmdByte, static_cast<uint16_t>(d.address), static_cast<int>(d.protocol));
-        }
-        return false;
+        cmd = Command::CUSTOM;
+        Serial.printf("[IR-RX] custom cmd=0x%02X (addr=0x%04X proto=%d)\n",
+                      cmdByte, addr, proto);
     }
 
     const uint32_t now = millis();
@@ -58,8 +54,13 @@ bool IRReceiver::poll(DecodedFrame& outFrame) {
     lastCmd_   = cmd;
     lastCmdMs_ = now;
 
-    Serial.printf("[IR-RX] cmd=0x%02X -> %s\n", cmdByte, commandToString(cmd));
-    outFrame.command = cmd;
+    if (cmd != Command::CUSTOM) {
+        Serial.printf("[IR-RX] cmd=0x%02X -> %s\n", cmdByte, commandToString(cmd));
+    }
+    outFrame.command    = cmd;
+    outFrame.rawCmd     = cmdByte;
+    outFrame.rawAddress = addr;
+    outFrame.rawProto   = proto;
     return true;
 }
 

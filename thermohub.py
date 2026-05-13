@@ -938,6 +938,7 @@ def list_custom_buttons():
         rows = conn.execute("SELECT id, name, protocol, address, command FROM custom_buttons ORDER BY id").fetchall()
     return {"buttons": [dict(r) for r in rows]}
 
+
 @app.post("/api/custom-buttons/clear-ir")
 def clear_custom_buttons_ir():
     """Reset IR data on all custom buttons (keeps the buttons themselves)."""

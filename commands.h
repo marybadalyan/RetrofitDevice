@@ -12,6 +12,7 @@ enum class Command : uint8_t {
     LEARN_TEMP_DOWN = 0x12,
     LEARN_CLEAR_ALL = 0x13,
     LEARN_CUSTOM = 0x14,  // Generic learn for custom buttons
+    CUSTOM       = 0x20,  // Unknown/custom IR received by heater
 };
 
 inline const char* commandToString(Command command) {
@@ -24,6 +25,7 @@ inline const char* commandToString(Command command) {
         case Command::LEARN_TEMP_DOWN: return "LEARN_TEMP_DOWN";
         case Command::LEARN_CLEAR_ALL: return "LEARN_CLEAR_ALL";
         case Command::LEARN_CUSTOM:    return "LEARN_CUSTOM";
+        case Command::CUSTOM:          return "CUSTOM";
         default:                       return "NONE";
     }
 }
