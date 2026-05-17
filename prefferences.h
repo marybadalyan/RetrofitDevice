@@ -3,9 +3,9 @@
 #include <cstdint>
 
 // ── PER-DEVICE CONFIG — change these before each flash ───────
-#define DEVICE_ID   "YO4T2S"
-#define DEVICE_PASS "j#Lv6pdONQ" 
-#define SERVER_URL  "http://192.168.0.10:5000"
+#define DEVICE_ID   "ABC123"
+#define DEVICE_PASS "abcde12345" 
+#define SERVER_URL  "http://192.168.0.18:5000"
 // ─────────────────────────────────────────────────────────────
 
 constexpr int kIrTxPin = 4;
@@ -29,7 +29,7 @@ constexpr uint32_t kHealthSnapshotIntervalMs   = 10000;
 constexpr float kDefaultTargetTemperatureC = 21.0F;
 
 // ── Hub ───────────────────────────────────────────────────────
-constexpr const char* kHubHost = "192.168.0.10";
+constexpr const char* kHubHost = "192.168.0.18";
 constexpr int         kHubPort = 5000;
 
 constexpr uint32_t kHubCommandPollIntervalMs = 100U;

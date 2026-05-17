@@ -349,6 +349,14 @@
     </div>
   </div>
 
+  <div id="overrideBanner" style="display:none;align-items:center;justify-content:space-between;
+       gap:12px;padding:10px 18px;border-radius:10px;margin-bottom:12px;
+       background:rgba(192,108,132,.06);border:1px solid rgba(192,108,132,.2);">
+    <span style="font-size:0.72rem;color:var(--muted);">Manual override active — schedule may be suppressed until next slot.</span>
+    <button onclick="clearOverride()" class="btn btn-s"
+            style="padding:5px 12px;font-size:0.62rem;flex-shrink:0;white-space:nowrap;">Clear</button>
+  </div>
+
   <div class="card">
     <div class="card-label">Heat over time</div>
     <div class="chart-wrap"><canvas id="liveChart"></canvas></div>
@@ -619,7 +627,7 @@ let schedEntries = [];
 let liveData = {room:[],target:[],labels:[]};
 let liveChart = null, histChart = null;
 let targetTemp = 21.0;
-let st = {power:true, roomTemp:null, targetTemp:21, mode:'FAST', pid:{p:0,i:0,d:0,steps:0}};
+let st = {power:true, roomTemp:null, targetTemp:21, mode:'FAST', pid:{p:0,i:0,d:0,steps:0}, has_manual_override:false};
 
 // ── helpers ──
 function rv(id, v){ document.getElementById(id).textContent = v; }
@@ -656,7 +664,9 @@ async function poll(){
   if(d.mode       !==undefined) st.mode       = d.mode;
   if(d.pid        !==undefined) st.pid        = d.pid;
   if(d.auto_control!==undefined) updateAutoControlUI(d.auto_control);
+  if(d.has_manual_override!==undefined) st.has_manual_override = d.has_manual_override;
   updateUI();
+  updateOverrideBanner();
   pushLivePoint();
 }
 
@@ -684,6 +694,20 @@ function updateUI(){
   lbl.className='power-lbl'+(st.power?' on':'');
   lbl.textContent=st.power?'ON':'OFF';
   document.getElementById('modeDisp').innerHTML=`<span class="mode-badge mb-${st.mode.toLowerCase()}">${st.mode}</span>`;
+}
+
+function updateOverrideBanner() {
+  const b = document.getElementById('overrideBanner');
+  if (b) b.style.display = st.has_manual_override ? 'flex' : 'none';
+}
+
+async function clearOverride() {
+  const r = await api('/api/clear-override', 'POST');
+  if (r) {
+    st.has_manual_override = false;
+    updateOverrideBanner();
+    toast('Override cleared');
+  }
 }
 
 async function togglePower(){

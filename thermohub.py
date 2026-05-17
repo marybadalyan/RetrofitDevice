@@ -409,6 +409,8 @@ last_manual_off_slot_key: str = ""        # slot key when user manually turned h
 # Each unique slot+command only fires once until the slot changes.
 last_schedule_cmd_key: str = ""
 last_schedule_temp_key: str = ""
+# Target to push to ESP32 until it echoes back the right value
+pending_manual_target: float = 0.0   # 0.0 = none
 
 # ─────────────────────────────────────────────────────────────
 #  ROUTES
@@ -492,7 +494,8 @@ def require_auth(device_id: str, request: Request):
 # ── ESP32: POST telemetry ──────────────────────────────────────
 @app.post("/api/telemetry")
 async def post_telemetry(request: Request):
-    global last_schedule_cmd_key, last_schedule_temp_key
+    global last_schedule_cmd_key, last_schedule_temp_key, pending_manual_target
+    global last_manual_slot_key, last_manual_off_slot_key, last_manual_temp_ts
     device_id  = request.headers.get("X-Device-ID", "").upper()
     encrypted  = request.headers.get("Content-Type", "") == "application/x-encrypted"
     device_pwd = None
@@ -525,17 +528,24 @@ async def post_telemetry(request: Request):
 
     # -999 is the ESP32 sentinel for "no sensor connected" — treat as None
     NO_SENSOR = -999.0
-    room_temp   = None if (data.room_temp   is None or data.room_temp   <= NO_SENSOR) else data.room_temp
-    target_temp = None if (data.target_temp is None or data.target_temp <= NO_SENSOR) else data.target_temp
+    room_temp   = None if (data.room_temp   is None or data.room_temp   <= NO_SENSOR) else round(data.room_temp * 2) / 2
+    target_temp = None if (data.target_temp is None or data.target_temp <= NO_SENSOR) else round(data.target_temp * 2) / 2
 
     # Update live state — only overwrite if real values received
     if room_temp is not None: device_state["room_temp"] = room_temp
     # Don't let stale ESP32 telemetry overwrite a recently set manual target.
     # Give the queued command 10 s to reach the device before accepting its echo back.
     if target_temp is not None:
-        secs_since_manual = time.time() - last_manual_temp_ts
-        if secs_since_manual > 10:
-            device_state["target_temp"] = target_temp
+        if pending_manual_target != 0.0:
+            # ESP32 echoed back the right value — it caught up
+            if abs(target_temp - pending_manual_target) < 0.3:
+                pending_manual_target = 0.0
+                device_state["target_temp"] = target_temp
+            # else: ESP32 still has old value; don't let it overwrite our pending target
+        else:
+            secs_since_manual = time.time() - last_manual_temp_ts
+            if secs_since_manual > 10:
+                device_state["target_temp"] = target_temp
     if data.power  is not None: device_state["power"]       = data.power
     if data.mode   is not None: device_state["mode"]        = data.mode
     device_state["pid"] = {
@@ -638,10 +648,14 @@ async def post_telemetry(request: Request):
                     temp_slot_key = f"{current_slot_key}_{sched_temp}"
                     if temp_slot_key != last_schedule_temp_key:
                         last_schedule_temp_key = temp_slot_key
+                        last_manual_slot_key = ""
+                        last_manual_off_slot_key = ""
+                        last_manual_temp_ts = 0.0
+                        pending_manual_target = 0.0
                         with get_db() as conn:
                             conn.execute(
                                 "INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
-                                (datetime.utcnow().isoformat(), f"temp:{sched_temp}", "schedule", "schedule")
+                                (datetime.utcnow().isoformat(), f"temp:{sched_temp}", "log", "schedule")
                             )
                             conn.commit()
             else:
@@ -649,18 +663,32 @@ async def post_telemetry(request: Request):
                           current_slot_key, manual_was_in_this_slot, user_turned_off_in_this_slot)
 
         elif action["type"] == "command" and action["command"]:
-            # Dedup: only fire each command slot once
-            now_local = datetime.now()
-            cmd_slot_key = f"{now_local.strftime('%a')}_{action.get('slot_time', 'none')}_{action['command']}"
-            if cmd_slot_key != last_schedule_cmd_key:
-                last_schedule_cmd_key = cmd_slot_key
-                with get_db() as conn:
-                    conn.execute(
-                        "INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
-                        (datetime.utcnow().isoformat(), action["command"], "schedule", "schedule")
-                    )
-                    conn.commit()
-                log.info("Schedule command queued: %s", action["command"])
+            cmd = action["command"]
+            # Skip temp_up/temp_down schedule commands when PID is managing temperature —
+            # they conflict with PID and should not displace on/off commands in the queue.
+            if device_state["auto_control"] and cmd in ("temp_up", "temp_down"):
+                log.debug("Schedule %s skipped — auto_control active", cmd)
+            else:
+                # Dedup: only fire each command slot once
+                now_local = datetime.now()
+                cmd_slot_key = f"{now_local.strftime('%a')}_{action.get('slot_time', 'none')}_{cmd}"
+                if cmd_slot_key != last_schedule_cmd_key:
+                    last_schedule_cmd_key = cmd_slot_key
+                    last_manual_slot_key = ""
+                    last_manual_off_slot_key = ""
+                    last_manual_temp_ts = 0.0
+                    pending_manual_target = 0.0
+                    with get_db() as conn:
+                        conn.execute(
+                            "INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
+                            (datetime.utcnow().isoformat(), cmd, "schedule", "schedule")
+                        )
+                        conn.commit()
+                    log.info("Schedule command queued: %s", cmd)
+
+    # Push manually-set target to ESP32 until it echoes back the right value
+    if pending_manual_target != 0.0:
+        response["scheduled_target"] = pending_manual_target
 
     if crypto_active:
         from fastapi.responses import PlainTextResponse
@@ -673,7 +701,21 @@ async def post_telemetry(request: Request):
 # ── Dashboard: GET current status ─────────────────────────────
 @app.get("/api/status")
 def get_status():
-    return device_state
+    return {
+        **device_state,
+        "has_manual_override": bool(last_manual_slot_key or last_manual_off_slot_key or pending_manual_target),
+    }
+
+# ── Dashboard: clear manual overrides ─────────────────────────
+@app.post("/api/clear-override")
+def clear_override():
+    global last_manual_slot_key, last_manual_off_slot_key, last_manual_temp_ts, pending_manual_target
+    last_manual_slot_key = ""
+    last_manual_off_slot_key = ""
+    last_manual_temp_ts = 0.0
+    pending_manual_target = 0.0
+    log.info("Manual overrides cleared")
+    return {"status": "ok"}
 
 # ── Dashboard: toggle auto control (PID) ──────────────────────
 class AutoControlIn(BaseModel):
@@ -709,7 +751,7 @@ def set_auto_control(body: AutoControlIn):
 # ── Dashboard / ESP32: send command ───────────────────────────
 @app.post("/api/command")
 def post_command(body: CommandIn):
-    global last_manual_temp_ts, last_manual_slot_key, last_manual_off_slot_key, learn_state
+    global last_manual_temp_ts, last_manual_slot_key, last_manual_off_slot_key, learn_state, pending_manual_target
     valid = {"on", "off", "temp_up", "temp_down",
              "learn_on_off", "learn_temp_up", "learn_temp_down", "learn_clear"}
     if body.command not in valid:
@@ -760,6 +802,7 @@ def post_command(body: CommandIn):
         if body.command == "temp_up":
             current = device_state["target_temp"] or 21.0
             device_state["target_temp"] = round(current + 0.5, 1)
+            pending_manual_target = device_state["target_temp"]
             last_manual_temp_ts = datetime.now().timestamp()
             slot = get_scheduled_action_now()
             now = datetime.now()
@@ -769,6 +812,7 @@ def post_command(body: CommandIn):
         if body.command == "temp_down":
             current = device_state["target_temp"] or 21.0
             device_state["target_temp"] = round(current - 0.5, 1)
+            pending_manual_target = device_state["target_temp"]
             last_manual_temp_ts = datetime.now().timestamp()
             slot = get_scheduled_action_now()
             now = datetime.now()
@@ -1326,6 +1370,7 @@ def get_scheduled_action_now() -> dict | None:
 # ── STARTUP ───────────────────────────────────────────────────
 @app.on_event("startup")
 def startup():
+    global last_schedule_cmd_key, last_schedule_temp_key
     init_db()
     with get_db() as conn:
         for key in ("target_temp",):
@@ -1342,4 +1387,19 @@ def startup():
         if row is not None:
             learn_state["learned"] = json.loads(row["value"])
             log.info("Restored learned codes: %s", learn_state["learned"])
+
+    # Pre-seed schedule dedup keys so the currently-active slot doesn't
+    # re-fire immediately after every restart.
+    action = get_scheduled_action_now()
+    if action:
+        now_local = datetime.now()
+        day = now_local.strftime("%a")
+        slot_time = action.get("slot_time", "none")
+        if action["type"] == "command" and action.get("command"):
+            last_schedule_cmd_key = f"{day}_{slot_time}_{action['command']}"
+            log.info("Startup: schedule dedup pre-seeded → %s", last_schedule_cmd_key)
+        elif action["type"] == "temp" and action.get("temp") is not None:
+            last_schedule_temp_key = f"{day}_{slot_time}_{action['temp']}"
+            log.info("Startup: schedule dedup pre-seeded → %s", last_schedule_temp_key)
+
     log.info("ThermoHub ready — visit http://localhost:5000")
