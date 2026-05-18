@@ -5,7 +5,7 @@
 // ── PER-DEVICE CONFIG — change these before each flash ───────
 #define DEVICE_ID   "ABC123"
 #define DEVICE_PASS "abcde12345" 
-#define SERVER_URL  "http://192.168.0.18:5000"
+#define SERVER_URL  "http://172.20.10.3:5000"
 // ─────────────────────────────────────────────────────────────
 
 constexpr int kIrTxPin = 4;
@@ -29,7 +29,7 @@ constexpr uint32_t kHealthSnapshotIntervalMs   = 10000;
 constexpr float kDefaultTargetTemperatureC = 21.0F;
 
 // ── Hub ───────────────────────────────────────────────────────
-constexpr const char* kHubHost = "192.168.0.18";
+constexpr const char* kHubHost = "172.20.10.3";
 constexpr int         kHubPort = 5000;
 
 constexpr uint32_t kHubCommandPollIntervalMs = 100U;

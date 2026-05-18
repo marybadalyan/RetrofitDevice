@@ -409,6 +409,7 @@ last_manual_off_slot_key: str = ""        # slot key when user manually turned h
 # Each unique slot+command only fires once until the slot changes.
 last_schedule_cmd_key: str = ""
 last_schedule_temp_key: str = ""
+last_schedule_on_key: str = ""   # dedup: only insert "on" once per temp slot
 # Target to push to ESP32 until it echoes back the right value
 pending_manual_target: float = 0.0   # 0.0 = none
 
@@ -494,7 +495,7 @@ def require_auth(device_id: str, request: Request):
 # ── ESP32: POST telemetry ──────────────────────────────────────
 @app.post("/api/telemetry")
 async def post_telemetry(request: Request):
-    global last_schedule_cmd_key, last_schedule_temp_key, pending_manual_target
+    global last_schedule_cmd_key, last_schedule_temp_key, last_schedule_on_key, pending_manual_target
     global last_manual_slot_key, last_manual_off_slot_key, last_manual_temp_ts
     device_id  = request.headers.get("X-Device-ID", "").upper()
     encrypted  = request.headers.get("Content-Type", "") == "application/x-encrypted"
@@ -628,8 +629,12 @@ async def post_telemetry(request: Request):
                 sched_temp = action["temp"]
                 need_update = target_temp is None or abs(sched_temp - target_temp) >= 0.5
 
-                # Turn heater on if it's off
-                if not device_state["power"]:
+                # Turn heater on if it's off — only once per slot.
+                # Without the dedup, telemetry overrides device_state["power"] back to False
+                # before the device echoes the new state, causing a flood of "on" commands
+                # that later undo any scheduled "off".
+                if not device_state["power"] and current_slot_key != last_schedule_on_key:
+                    last_schedule_on_key = current_slot_key
                     device_state["power"] = True
                     with get_db() as conn:
                         conn.execute("INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
@@ -648,6 +653,7 @@ async def post_telemetry(request: Request):
                     temp_slot_key = f"{current_slot_key}_{sched_temp}"
                     if temp_slot_key != last_schedule_temp_key:
                         last_schedule_temp_key = temp_slot_key
+                        last_schedule_on_key = ""   # allow "on" to fire in the new slot
                         last_manual_slot_key = ""
                         last_manual_off_slot_key = ""
                         last_manual_temp_ts = 0.0
@@ -674,11 +680,18 @@ async def post_telemetry(request: Request):
                 cmd_slot_key = f"{now_local.strftime('%a')}_{action.get('slot_time', 'none')}_{cmd}"
                 if cmd_slot_key != last_schedule_cmd_key:
                     last_schedule_cmd_key = cmd_slot_key
+                    last_schedule_on_key = ""   # new slot — allow "on" to fire again
                     last_manual_slot_key = ""
                     last_manual_off_slot_key = ""
                     last_manual_temp_ts = 0.0
                     pending_manual_target = 0.0
                     with get_db() as conn:
+                        # Flush any pending schedule commands (accumulated "on" toggles, etc.)
+                        # so this scheduled action is guaranteed to be the next thing
+                        # the device acts on — it can't be buried by prior queued commands.
+                        conn.execute(
+                            "UPDATE commands SET source='sent' WHERE source='schedule'"
+                        )
                         conn.execute(
                             "INSERT INTO commands (ts, command, source, origin) VALUES (?,?,?,?)",
                             (datetime.utcnow().isoformat(), cmd, "schedule", "schedule")
